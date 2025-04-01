@@ -1,7 +1,14 @@
-package github.com/AlexeyBeley/go_misc/list
+package list
 
+import (
+	"github.com/AlexeyBeley/go_common/logger"
+)
 
-struct Link{
-data string
+//var lg = &(logger.Logger{Level: logger.DEBUG})
+var lg = &(logger.Logger{Level: logger.INFO})
 
+type List interface{
+	Insert (any)
+	Print ()
 }
+
