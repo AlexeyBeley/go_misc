@@ -44,10 +44,10 @@ func TestDescribeNetworkInterfaces(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadEC2TestRealConfig()
 		client := getEC2Client(&realConfig.Region)
-		err := DescribeNetworkInterfaces(client, func(nInt *ec2.NetworkInterface) error {
+		err := DescribeNetworkInterfaces(client, func(nInt any) error {
 			fmt.Printf("nIntL %v ", nInt)
 			return nil
-		})
+		}, nil)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
@@ -57,7 +57,8 @@ func TestDescribeNetworkInterfaces(t *testing.T) {
 func TestRecordNetworkInterfaces(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadEC2TestRealConfig()
-		err := RecordNetworkInterfaces(&realConfig.Region)
+		networkInterfaces := make(map[string]ec2.NetworkInterface)
+		err := RecordNetworkInterfaces(&realConfig.Region, &networkInterfaces)
 		if err != nil {
 			t.Errorf("%v", err)
 		}

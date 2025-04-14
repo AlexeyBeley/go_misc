@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/aws_api"
 	"github.com/AlexeyBeley/go_misc/list"
 	"github.com/AlexeyBeley/go_misc/tree"
 )
@@ -116,7 +117,7 @@ func testBST() {
 }
 
 func testAVLTree() {
-	//async counter	
+	//async counter
 	/*	itemsNum := 20
 
 		myTree := tree.AVLTree{BST: tree.BST{Data: itemsNum / 4}}
@@ -143,6 +144,9 @@ func main() {
 	fmt.Printf("%T\n", testBST)
 	fmt.Printf("%T\n", testAVLTree)
 	fmt.Printf("%T\n", Test)
-	testBST()
+	//testBST()
+	//aws_api.AnalyzeFlow("us-east-2", []string{}, "/tmp/networkInterfaces.json")
+	config_file_path := "/tmp/SubnetRecordingConfig.json"
+	aws_api.StartRecording(config_file_path)
 
 }

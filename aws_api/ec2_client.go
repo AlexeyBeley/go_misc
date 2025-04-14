@@ -40,10 +40,10 @@ func getEC2Client(region *string) *ec2.EC2 {
 	return ec2.New(sess)
 }
 
-func DescribeNetworkInterfaces(svc *ec2.EC2, callback NetworkInterfaceCallback) error {
+func DescribeNetworkInterfaces(svc *ec2.EC2, callback GenericCallback, describeNetworkInterfacesInput *ec2.DescribeNetworkInterfacesInput) error {
 	var callbackErr error
 	pageNum := 0
-	err := svc.DescribeNetworkInterfacesPages(&ec2.DescribeNetworkInterfacesInput{}, func(page *ec2.DescribeNetworkInterfacesOutput, notHasNextPage bool) bool {
+	err := svc.DescribeNetworkInterfacesPages(describeNetworkInterfacesInput, func(page *ec2.DescribeNetworkInterfacesOutput, notHasNextPage bool) bool {
 		// stop when returns False
 		pageNum++
 		for _, nInt := range page.NetworkInterfaces {
@@ -60,16 +60,21 @@ func DescribeNetworkInterfaces(svc *ec2.EC2, callback NetworkInterfaceCallback) 
 	return err
 }
 
-func cacheNetworkInterfacesGenerator(networkInterfaces *[]ec2.NetworkInterface) func(nInt *ec2.NetworkInterface) error {
+func cacheNetworkInterfacesGenerator(networkInterfaces *map[string]ec2.NetworkInterface) func(nInt any) error {
 	dst_file_path := "/tmp/networkInterfaces.json"
-	return func(nInt *ec2.NetworkInterface) error {
-		for _, existingnetworkInterface := range *networkInterfaces {
-			if *existingnetworkInterface.NetworkInterfaceId == *nInt.NetworkInterfaceId {
-				return nil
-			}
+	return func(anyInt any) error {
+		nInt, ok := anyInt.(*ec2.NetworkInterface)
+		if !ok {
+			panic(anyInt)
 		}
+
+		_, exists := (*networkInterfaces)[*nInt.NetworkInterfaceId]
+		if exists {
+			return nil
+		}
+
 		fmt.Printf("Recording interface %s\n", *nInt.NetworkInterfaceId)
-		*networkInterfaces = append(*networkInterfaces, *nInt)
+		(*networkInterfaces)[*nInt.NetworkInterfaceId] = *nInt
 
 		jsonData, err := json.MarshalIndent(*networkInterfaces, "", "  ")
 		if err != nil {
@@ -85,11 +90,11 @@ func cacheNetworkInterfacesGenerator(networkInterfaces *[]ec2.NetworkInterface) 
 
 }
 
-func RecordNetworkInterfaces(region *string) error {
-	networkInterfaces := []ec2.NetworkInterface{}
+func RecordNetworkInterfaces(region *string, networkInterfaces *map[string]ec2.NetworkInterface) error {
+
 	client := getEC2Client(region)
 	for {
-		err := DescribeNetworkInterfaces(client, cacheNetworkInterfacesGenerator(&networkInterfaces))
+		err := DescribeNetworkInterfaces(client, cacheNetworkInterfacesGenerator(networkInterfaces), nil)
 		if err != nil {
 			return err
 		}
@@ -99,18 +104,8 @@ func RecordNetworkInterfaces(region *string) error {
 	return nil
 }
 
-//type DescribeFlowLogsCallback func(*ec2.FlowLog) error
 
-type DescribeFlowLogsCallback func(any) error
-
-func AggregatorInitializer(objects *[]any) func(any) error {
-	return func(object any) error {
-		*objects = append(*objects, object)
-		return nil
-	}
-}
-
-func DescribeFlowLogsPages(svc *ec2.EC2, Filter []*ec2.Filter, callback DescribeFlowLogsCallback) error {
+func DescribeFlowLogsPages(svc *ec2.EC2, Filter []*ec2.Filter, callback GenericCallback) error {
 	var callbackErr error
 	pageNum := 0
 	err := svc.DescribeFlowLogsPages(&ec2.DescribeFlowLogsInput{Filter: Filter}, func(page *ec2.DescribeFlowLogsOutput, notHasNextPage bool) bool {

@@ -3,11 +3,7 @@ package aws_api
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -32,6 +28,14 @@ func LoadConfig(configFilePath string) (config Configuration, err error) {
 	return config, nil
 }
 
+func getCloudwatchLogClient(region *string) *cloudwatchlogs.CloudWatchLogs {
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+		Config:            aws.Config{Region: region},
+	}))
+	return cloudwatchlogs.New(sess)
+}
+
 func FetchCloudwatchLogStream(region, logGroupName, streamName string) error {
 	limit := int64(100)
 	if logGroupName == "" || streamName == "" {
@@ -39,16 +43,13 @@ func FetchCloudwatchLogStream(region, logGroupName, streamName string) error {
 		return nil
 	}
 
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-		Config:            aws.Config{Region: &region},
-	}))
+	svc := getCloudwatchLogClient(&region)
 
 	var nextToken *string
 	var gotToken *string
 	var StartTime, EndTime *int64
 	for {
-		resp, err := GetLogEventsRaw(sess, &limit, &logGroupName, &streamName, nextToken, StartTime, EndTime)
+		resp, err := GetLogEventsRaw(svc, &limit, &logGroupName, &streamName, nextToken, StartTime, EndTime)
 		if err != nil {
 			fmt.Println("Got error getting log events:")
 			fmt.Println(err)
@@ -78,8 +79,8 @@ func FetchCloudwatchLogStream(region, logGroupName, streamName string) error {
 	return nil
 }
 
-func GetLogEventsRaw(sess *session.Session, limit *int64, logGroupName *string, logStreamName *string, NextToken *string, StartTime, EndTime *int64) (*cloudwatchlogs.GetLogEventsOutput, error) {
-	svc := cloudwatchlogs.New(sess)
+func GetLogEventsRaw(svc *cloudwatchlogs.CloudWatchLogs, limit *int64, logGroupName *string, logStreamName *string, NextToken *string, StartTime, EndTime *int64) (*cloudwatchlogs.GetLogEventsOutput, error) {
+
 	StartFromHead := true
 	Unmask := true
 
@@ -90,8 +91,8 @@ func GetLogEventsRaw(sess *session.Session, limit *int64, logGroupName *string, 
 		NextToken:     NextToken,
 		StartFromHead: &StartFromHead,
 		Unmask:        &Unmask,
-		StartTime: StartTime,
-		EndTime: EndTime,
+		StartTime:     StartTime,
+		EndTime:       EndTime,
 	})
 	if err != nil {
 		return nil, err
@@ -102,28 +103,21 @@ func GetLogEventsRaw(sess *session.Session, limit *int64, logGroupName *string, 
 
 type EventHandlerCallback func(*cloudwatchlogs.OutputLogEvent) error
 
-func YieldCloudwatchLogStream(region, logGroupName, streamName string, startTime, endTime *int64, callback EventHandlerCallback) error {
+func YieldCloudwatchLogStream(region, logGroupName, streamName, nextToken *string, startTime, endTime *int64, callback EventHandlerCallback) (*cloudwatchlogs.GetLogEventsOutput, error) {
 	limit := int64(100)
 	counter := 0
 
-	if logGroupName == "" || streamName == "" {
-		fmt.Println("You must supply a log group name (-g LOG-GROUP) and log stream name (-s LOG-STREAM)")
-		return nil
+	if *logGroupName == "" ||*streamName == "" {
+		return nil, fmt.Errorf("you must supply a log group name and log stream name: %s, %s", logGroupName, streamName)
 	}
 
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-		Config:            aws.Config{Region: &region},
-	}))
-
-	var nextToken *string
 	var gotToken *string
-
+	svc := getCloudwatchLogClient(region)
 	for {
-		resp, err := GetLogEventsRaw(sess, &limit, &logGroupName, &streamName, nextToken, startTime, endTime)
+		resp, err := GetLogEventsRaw(svc, &limit, logGroupName, streamName, nextToken, startTime, endTime)
 		if err != nil {
 			fmt.Printf("Got error getting log events: %s\n", err)
-			return err
+			return nil, err
 		}
 
 		for _, event := range resp.Events {
@@ -132,11 +126,11 @@ func YieldCloudwatchLogStream(region, logGroupName, streamName string, startTime
 		}
 
 		gotToken = resp.NextForwardToken
-		if gotToken == nil{
+		if gotToken == nil {
 			if len(resp.Events) > 0 {
-				return fmt.Errorf("unexpected state: gotToken is nil while len(resp.Events)>0 for stream: %s", streamName)
+				return resp, fmt.Errorf("unexpected state: gotToken is nil while len(resp.Events)>0 for stream: %s", streamName)
 			}
-			return nil
+			return resp, nil
 		}
 
 		if nextToken == nil {
@@ -145,93 +139,24 @@ func YieldCloudwatchLogStream(region, logGroupName, streamName string, startTime
 		}
 
 		if *gotToken == *nextToken {
-			break
+			return resp, nil
 		}
 
 		nextToken = gotToken
 		fmt.Printf("Fetched events: %d\n", counter)
 
 	}
-
-	return nil
-}
-
-func BytesSummarizer(aggregator *int) func(*cloudwatchlogs.OutputLogEvent) error {
-	return func(event *cloudwatchlogs.OutputLogEvent) error {
-		if strings.Contains(*event.Message, "NODATA") {
-			return nil
-		}
-		//fmt.Println("  ", *event.Message)
-		stringSplit := strings.Split(*event.Message, " ")
-		srcaddr := stringSplit[3]
-		dstaddr := stringSplit[4]
-		ipSrc := net.ParseIP(srcaddr)
-		ipDst := net.ParseIP(dstaddr)
-		if ipSrc == nil || ipDst == nil {
-			return fmt.Errorf("srcaddr: %v, dstaddr: %v ", srcaddr, dstaddr)
-		}
-
-		if ipSrc.IsPrivate() && ipDst.IsPrivate() {
-			return nil
-		}
-
-		bytes, err := strconv.Atoi(stringSplit[9])
-		if err != nil {
-			return err
-		}
-		*aggregator += bytes
-		return nil
-	}
-}
-
-func SubnetFlowStreamByteSumCallback(region, logGroupName string) func(LogStream *cloudwatchlogs.LogStream) error {
-	return func(LogStream *cloudwatchlogs.LogStream) error {
-		sum := 0
-
-		nowUTC := time.Now().UTC()
-		epochEndSeconds := nowUTC.Unix()
-		epochStartSeconds := epochEndSeconds - 24*60*60
-		//LogStream.FirstEventTimestamp
-		epochEndMiliSeconds := epochEndSeconds * 1000
-		epochStartMiliSeconds := epochStartSeconds * 1000
-		
-		if *LogStream.LastEventTimestamp < epochStartSeconds {
-			return nil
-		}
-
-		YieldCloudwatchLogStream(region, logGroupName, *LogStream.LogStreamName, &epochStartMiliSeconds, &epochEndMiliSeconds, BytesSummarizer(&sum))
-
-		filename := "/tmp/eni_bytes.out"
-		file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			panic(fmt.Sprintf("Error opening file: %s", err))
-		}
-		defer file.Close()
-		textToAppend := fmt.Sprintf("streamName: %s Sum: %d \n", *LogStream.LogStreamName, sum)
-		_, err = file.WriteString(textToAppend)
-		if err != nil {
-			panic(fmt.Sprintf("Error writing to file: %s", err))
-		}
-
-		return nil
-	}
-
-}
-
-func SubnetsFlowStreamByteSum(region, logGroupName string) error {
-	return YieldCloudwatchLogStreams(region, logGroupName, SubnetFlowStreamByteSumCallback(region, logGroupName))
 }
 
 type StringCallback func(string) error
-type LogStreamCallback func(*cloudwatchlogs.LogStream) error
 
-func GetLogStreamsRaw(sess *session.Session, limit *int64, logGroupName *string, callback LogStreamCallback) error {
-	svc := cloudwatchlogs.New(sess)
+func GetLogStreamsRaw(svc *cloudwatchlogs.CloudWatchLogs, limit *int64, logGroupName, LogStreamNamePrefix *string, callback GenericCallback) error {
 	var callbackErr error
 	pageNum := 0
 	err := svc.DescribeLogStreamsPages(&cloudwatchlogs.DescribeLogStreamsInput{
-		Limit:        limit,
-		LogGroupName: logGroupName,
+		Limit:               limit,
+		LogGroupName:        logGroupName,
+		LogStreamNamePrefix: LogStreamNamePrefix,
 	}, func(page *cloudwatchlogs.DescribeLogStreamsOutput, notHasNextPage bool) bool {
 		// stop when returns False
 		pageNum++
@@ -251,7 +176,7 @@ func GetLogStreamsRaw(sess *session.Session, limit *int64, logGroupName *string,
 	return err
 }
 
-func YieldCloudwatchLogStreams(region, logGroupName string, callback LogStreamCallback) error {
+func YieldCloudwatchLogStreams(region, logGroupName string, callback GenericCallback) error {
 	limit := int64(50)
 
 	if logGroupName == "" {
@@ -262,8 +187,8 @@ func YieldCloudwatchLogStreams(region, logGroupName string, callback LogStreamCa
 		SharedConfigState: session.SharedConfigEnable,
 		Config:            aws.Config{Region: &region},
 	}))
-
-	err := GetLogStreamsRaw(sess, &limit, &logGroupName, callback)
+	svc := cloudwatchlogs.New(sess)
+	err := GetLogStreamsRaw(svc, &limit, &logGroupName, nil, callback)
 	if err != nil {
 		fmt.Println("Got error getting log events:")
 		fmt.Println(err)
@@ -277,9 +202,9 @@ func LogStreamsCacheCallback(LogStream *cloudwatchlogs.LogStream) error {
 	return nil
 }
 
-func Cacher() func(*cloudwatchlogs.LogStream) error {
+func Cacher() func(any) error {
 	counter := 0
-	return func(LogStream *cloudwatchlogs.LogStream) error {
+	return func(LogStream any) error {
 		counter++
 		fmt.Printf("Counter: %d\n", counter)
 		return nil
