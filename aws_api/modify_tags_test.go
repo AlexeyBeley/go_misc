@@ -35,40 +35,160 @@ func loadRealConfig() ModifyTagsConfig {
 	return modifyTagsConfig
 }
 
-func TestAddTagNetworkInterfaces(t *testing.T) {
+func TestAddTagsNetworkInterfaces(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := AddTagNetworkInterfaces(realConfig)
+		err := AddTagsNetworkInterfaces(realConfig)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
 	})
 }
 
-func TestAddTagNatGateways(t *testing.T) {
+func TestAddTagsNatGateways(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := AddTagNatGateways(realConfig)
+		err := AddTagsNatGateways(realConfig)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
 	})
 }
 
-func TestAddTagInstances(t *testing.T) {
+func TestAddTagsInstances(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := AddTagInstances(realConfig)
+		err := AddTagsInstances(realConfig)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
 	})
 }
 
-func TestAddTagElasticIps(t *testing.T) {
+func TestAddTagsElasticIps(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := AddTagElasticIps(realConfig)
+		err := AddTagsElasticIps(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsVolumes(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsVolumes(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsLaunchTemplates(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsLaunchTemplates(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsImages(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsImages(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsSnapshots(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsSnapshots(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsKeyPairs(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsKeyPairs(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsSecurityGroups(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsSecurityGroups(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsLoadBalancers(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsLoadBalancers(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsTargetGroups(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsTargetGroups(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsAutoScalingGroups(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsAutoScalingGroups(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsRDSClusters(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsRDSClusters(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsRDSInstances(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsRDSInstances(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsS3Buckets(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsS3Buckets(realConfig)
 		if err != nil {
 			t.Errorf("%v", err)
 		}

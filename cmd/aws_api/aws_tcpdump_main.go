@@ -9,5 +9,5 @@ var lg = &(logger.Logger{})
 
 func main() {
 	config_file_path := "/tmp/SubnetRecordingConfig.json"
-	aws_api.StartRecording(config_file_path)
+	aws_api.AWSTCPDumpStart(config_file_path)
 }

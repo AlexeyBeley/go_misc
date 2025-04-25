@@ -25,7 +25,7 @@ type NatAnalyzerConfig struct {
 	OutputFilePath string
 }
 
-func StartRecording(configFilePath string) error {
+func AWSTCPDumpStart(configFilePath string) error {
 
 	workPool := make(chan bool, 5)
 
@@ -60,6 +60,10 @@ func StartRecording(configFilePath string) error {
 }
 
 func provisionSubnetsFlowLogGroups(region string, subnetIds []string) map[string]string {
+	iamAPI := clients.IAMAPINew(nil)
+	policy := map[string]any{":": 1, "2": "2"}
+	roleName := "role-tcpdump"
+	iamAPI.ProvisionIamRole(policy, &roleName)
 	ret := make(map[string]string)
 
 	var subnetValues []*string
@@ -74,25 +78,30 @@ func provisionSubnetsFlowLogGroups(region string, subnetIds []string) map[string
 		Name:   aws.String("resource-id"), // Filter by resource ID
 		Values: subnetValues,
 	}}
-	objects := make([]any, 0)
-	err := clients.DescribeFlowLogsPages(client, Filters, clients.AggregatorInitializer(&objects))
+
+	flowLogObjects := make([]any, 0)
+	err := clients.DescribeFlowLogsPages(client, Filters, clients.AggregatorInitializer(&flowLogObjects))
 	if err != nil {
 		panic(err)
 	}
 
-	for _, obj := range objects {
+	for _, obj := range flowLogObjects {
 		flowLog, ok := obj.(*ec2.FlowLog)
 		if !ok {
 			panic(obj)
 		}
 		ret[*flowLog.ResourceId] = *flowLog.LogGroupName
 	}
-
+	resourceType := "Subnet"
 	for _, subnetId := range subnetIds {
+		api := clients.EC2APINew(&region, nil)
 		_, ok := ret[subnetId]
 		if !ok {
 			logGroupName := provisionSubnetLogGroup(&region, &subnetId)
-			clients.ProvisionSubnetsFlowLog(client, logGroupName)
+			_, err := api.ProvisionFlowLog(&logGroupName, &resourceType, []*string{&subnetId})
+			if err != nil {
+				panic(err)
+			}
 			ret[subnetId] = logGroupName
 		}
 
@@ -101,9 +110,22 @@ func provisionSubnetsFlowLogGroups(region string, subnetIds []string) map[string
 }
 
 func provisionSubnetLogGroup(region *string, subnetId *string) (logGroupName string) {
+	api := clients.CloudwatchLogsAPINew(region, nil)
 	logGroupName = "tcpdump-" + *subnetId
-	client := clients.GetCloudwatchLogClient(region)
-	clients.ProvisionLogGroup(client, logGroupName)
+	existingLogGroup, err := api.GetLogGroup(&logGroupName)
+
+	if err != nil {
+		panic(err)
+	}
+
+	if existingLogGroup == nil {
+		output, err := api.ProvisionLogGroup(logGroupName)
+		if err != nil {
+			panic(err)
+		}
+		lg.Infof("Provision Log group response: %v", output)
+	}
+
 	return logGroupName
 }
 

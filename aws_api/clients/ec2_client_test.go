@@ -130,7 +130,7 @@ func TestDescribeVpcEndpointsPages(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 
 		realConfig := loadEC2TestRealConfig()
-		api := GetEC2API(&realConfig.Region, &realConfig.ProfileName)
+		api := EC2APINew(&realConfig.Region, &realConfig.ProfileName)
 
 		objects := make([]any, 0)
 		err := api.DescribeVpcEndpointsPages(Echo(), nil)

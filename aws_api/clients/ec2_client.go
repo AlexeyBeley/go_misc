@@ -165,15 +165,11 @@ func DescribeFlowLogsPages(svc *ec2.EC2, Filter []*ec2.Filter, callback GenericC
 	return err
 }
 
-func ProvisionSubnetsFlowLog(svc *ec2.EC2, logGroupName string) error {
-	return nil
-}
-
 type EC2API struct {
 	svc *ec2.EC2
 }
 
-func GetEC2API(region *string, profileName *string) *EC2API {
+func EC2APINew(region *string, profileName *string) *EC2API {
 	if profileName == nil {
 		profileNameString := "default"
 		profileName = &profileNameString
@@ -187,6 +183,12 @@ func GetEC2API(region *string, profileName *string) *EC2API {
 	svc := ec2.New(sess)
 	ret := EC2API{svc: svc}
 	return &ret
+}
+
+func (api *EC2API) ProvisionFlowLog(logGroupName, resourceType *string, resourceIds []*string) (*ec2.CreateFlowLogsOutput, error) {
+	input := ec2.CreateFlowLogsInput{LogGroupName: logGroupName, ResourceIds: resourceIds, ResourceType: resourceType}
+	reponse, err := api.svc.CreateFlowLogs(&input)
+	return reponse, err
 }
 
 func (api *EC2API) DescribeVpcEndpointsPages(callback GenericCallback, describeNetworkInterfacesInput *ec2.DescribeVpcEndpointsInput) error {
@@ -243,4 +245,111 @@ func (api *EC2API) DescribeAddresses(callback GenericCallback, describeInput *ec
 	}
 
 	return nil
+}
+
+func (api *EC2API) DescribeVolumes(callback GenericCallback, Input *ec2.DescribeVolumesInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeVolumesPages(Input, func(page *ec2.DescribeVolumesOutput, notHasNextPage bool) bool {
+		pageNum++
+		for _, obj := range page.Volumes {
+			if callbackErr = callback(obj); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	return err
+}
+
+func (api *EC2API) DescribeLaunchTemplates(callback GenericCallback, Input *ec2.DescribeLaunchTemplatesInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeLaunchTemplatesPages(Input, func(page *ec2.DescribeLaunchTemplatesOutput, notHasNextPage bool) bool {
+		pageNum++
+		for _, obj := range page.LaunchTemplates {
+			if callbackErr = callback(obj); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	return err
+}
+
+func (api *EC2API) DescribeImages(callback GenericCallback, Input *ec2.DescribeImagesInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeImagesPages(Input, func(page *ec2.DescribeImagesOutput, notHasNextPage bool) bool {
+		pageNum++
+		for _, obj := range page.Images {
+			if callbackErr = callback(obj); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	return err
+}
+
+func (api *EC2API) DescribeSnapshots(callback GenericCallback, Input *ec2.DescribeSnapshotsInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeSnapshotsPages(Input, func(page *ec2.DescribeSnapshotsOutput, notHasNextPage bool) bool {
+		pageNum++
+		for _, obj := range page.Snapshots {
+			if callbackErr = callback(obj); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	return err
+}
+
+func (api *EC2API) DescribeKeyPairs(callback GenericCallback, Input *ec2.DescribeKeyPairsInput) error {
+	var callbackErr error
+
+	response, err := api.svc.DescribeKeyPairs(Input)
+	if err != nil {
+		return err
+	}
+
+	for _, obj := range response.KeyPairs {
+		if callbackErr = callback(obj); callbackErr != nil {
+			return callbackErr
+		}
+	}
+
+	return nil
+}
+
+func (api *EC2API) DescribeSecurityGroups(callback GenericCallback, Input *ec2.DescribeSecurityGroupsInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeSecurityGroupsPages(Input, func(page *ec2.DescribeSecurityGroupsOutput, notHasNextPage bool) bool {
+		pageNum++
+		for _, obj := range page.SecurityGroups {
+			if callbackErr = callback(obj); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	return err
 }

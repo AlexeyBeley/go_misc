@@ -4,7 +4,11 @@ import (
 	"strings"
 
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/elbv2"
+	"github.com/aws/aws-sdk-go/service/rds"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 type ModifyTagsConfig struct {
@@ -45,9 +49,9 @@ func (config *ModifyTagsConfig) InitFromM(source any) error {
 	return nil
 }
 
-func AddTagNetworkInterfaces(config ModifyTagsConfig) error {
+func AddTagsNetworkInterfaces(config ModifyTagsConfig) error {
 	client := clients.GetEC2Client(&config.Region)
-	api := clients.GetEC2API(&config.Region, nil)
+	api := clients.EC2APINew(&config.Region, nil)
 	objects := make([]any, 0)
 	err := clients.DescribeNetworkInterfaces(client, clients.AggregatorInitializer(&objects), nil)
 	if err != nil {
@@ -74,9 +78,9 @@ func AddTagNetworkInterfaces(config ModifyTagsConfig) error {
 	return nil
 }
 
-func AddTagNatGateways(config ModifyTagsConfig) error {
+func AddTagsNatGateways(config ModifyTagsConfig) error {
 	client := clients.GetEC2Client(&config.Region)
-	api := clients.GetEC2API(&config.Region, nil)
+	api := clients.EC2APINew(&config.Region, nil)
 	objects := make([]any, 0)
 	err := clients.DescribeNatGateways(client, clients.AggregatorInitializer(&objects), nil)
 	if err != nil {
@@ -101,9 +105,9 @@ func AddTagNatGateways(config ModifyTagsConfig) error {
 	return nil
 }
 
-func AddTagInstances(config ModifyTagsConfig) error {
+func AddTagsInstances(config ModifyTagsConfig) error {
 	client := clients.GetEC2Client(&config.Region)
-	api := clients.GetEC2API(&config.Region, nil)
+	api := clients.EC2APINew(&config.Region, nil)
 	objects := make([]any, 0)
 	err := clients.DescribeInstances(client, clients.AggregatorInitializer(&objects), nil)
 	if err != nil {
@@ -128,8 +132,8 @@ func AddTagInstances(config ModifyTagsConfig) error {
 	return nil
 }
 
-func AddTagElasticIps(config ModifyTagsConfig) error {
-	api := clients.GetEC2API(&config.Region, nil)
+func AddTagsElasticIps(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
 	objects := make([]any, 0)
 	err := api.DescribeAddresses(clients.AggregatorInitializer(&objects), nil)
 	if err != nil {
@@ -154,14 +158,321 @@ func AddTagElasticIps(config ModifyTagsConfig) error {
 	return nil
 }
 
-/*
-volumes
-launch templates
-amis
-snapshots
-load balancers
-target groups
-key pairs
-auto-scaling groups
-security groups
-*/
+func AddTagsVolumes(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeVolumes(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*ec2.Volume)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.VolumeId, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsLaunchTemplates(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeLaunchTemplates(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*ec2.LaunchTemplate)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.LaunchTemplateId, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsImages(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	self := "self"
+	input := ec2.DescribeImagesInput{Owners: []*string{&self}}
+	err := api.DescribeImages(clients.AggregatorInitializer(&objects), &input)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*ec2.Image)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.ImageId, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsSnapshots(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	self := "self"
+	input := ec2.DescribeSnapshotsInput{OwnerIds: []*string{&self}}
+	err := api.DescribeSnapshots(clients.AggregatorInitializer(&objects), &input)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*ec2.Snapshot)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.SnapshotId, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsKeyPairs(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeKeyPairs(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*ec2.KeyPairInfo)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.KeyPairId, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsSecurityGroups(config ModifyTagsConfig) error {
+	api := clients.EC2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeSecurityGroups(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*ec2.SecurityGroup)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.GroupId, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsLoadBalancers(config ModifyTagsConfig) error {
+	api := clients.ELBV2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeLoadBalancers(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*elbv2.LoadBalancer)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.AddTags(config.AddTags, obj.LoadBalancerArn, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsTargetGroups(config ModifyTagsConfig) error {
+	api := clients.ELBV2APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeTargetGroups(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*elbv2.TargetGroup)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.AddTags(config.AddTags, obj.TargetGroupArn, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsAutoScalingGroups(config ModifyTagsConfig) error {
+	api := clients.GetAutoscalingAPI(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeAutoScalingGroups(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*autoscaling.Group)
+		if !ok {
+			panic(anyObject)
+		}
+
+		//todo: refactor to transform obj.Tags (TagDescription) -> []*autoscaling.Tag{}
+
+		objTags := []*autoscaling.Tag{}
+		resourceType := "auto-scaling-group"
+		err := api.CreateOrUpdateTags(objTags, config.AddTags, obj.AutoScalingGroupName, &resourceType, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+
+	}
+	return nil
+}
+
+func AddTagsRDSClusters(config ModifyTagsConfig) error {
+	api := clients.RDSAPINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeClusters(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*rds.DBCluster)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.TagList, config.AddTags, obj.DBClusterArn, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsRDSInstances(config ModifyTagsConfig) error {
+	api := clients.RDSAPINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.DescribeInstances(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*rds.DBInstance)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.CreateTags(obj.TagList, config.AddTags, obj.DBInstanceArn, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}
+
+func AddTagsS3Buckets(config ModifyTagsConfig) error {
+	api := clients.S3APINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.ListBuckets(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, anyObject := range objects {
+		obj, ok := anyObject.(*s3.Bucket)
+		if !ok {
+			panic(anyObject)
+		}
+
+		createTagsOutput, err := api.AddTags(config.AddTags, obj, false)
+		if err != nil {
+			ret := err.Error()
+			lg.Infof("%s", ret)
+			return err
+		}
+		lg.Infof("Create tags response: %s", createTagsOutput)
+
+	}
+	return nil
+}

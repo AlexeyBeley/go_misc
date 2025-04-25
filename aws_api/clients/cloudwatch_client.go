@@ -28,6 +28,29 @@ func LoadConfig(configFilePath string) (config Configuration, err error) {
 	return config, nil
 }
 
+type CloudwatchLogsAPI struct {
+	svc *cloudwatchlogs.CloudWatchLogs
+}
+
+func CloudwatchLogsAPINew(region *string, profileName *string) *CloudwatchLogsAPI {
+	if profileName == nil {
+		profileNameString := "default"
+		profileName = &profileNameString
+	}
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+		Config:            aws.Config{Region: region},
+	}))
+	ret := CloudwatchLogsAPI{svc: cloudwatchlogs.New(sess)}
+	return &ret
+}
+
+func (api *CloudwatchLogsAPI) ProvisionLogGroup(logGroupName string) (*cloudwatchlogs.CreateLogGroupOutput, error) {
+	input := cloudwatchlogs.CreateLogGroupInput{LogGroupName: &logGroupName}
+	response, err := api.svc.CreateLogGroup(&input)
+	return response, err
+}
+
 func GetCloudwatchLogClient(region *string) *cloudwatchlogs.CloudWatchLogs {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
@@ -99,11 +122,6 @@ func GetLogEventsRaw(svc *cloudwatchlogs.CloudWatchLogs, limit *int64, logGroupN
 	}
 
 	return resp, nil
-}
-
-func ProvisionLogGroup(svc *cloudwatchlogs.CloudWatchLogs, logGroupName string) (*cloudwatchlogs.GetLogEventsOutput, error) {
-
-	return nil, nil
 }
 
 type EventHandlerCallback func(*cloudwatchlogs.OutputLogEvent) error
@@ -203,4 +221,16 @@ func LogStreamsCacheCallback(LogStream *cloudwatchlogs.LogStream) error {
 
 func LogStreamsCache(region, logGroupName string) error {
 	return YieldCloudwatchLogStreams(region, logGroupName, Counter())
+}
+
+func (api *CloudwatchLogsAPI) GetLogGroup(name *string) (logGroup *cloudwatchlogs.LogGroup, err error) {
+	input := cloudwatchlogs.DescribeLogGroupsInput{LogGroupNamePattern: name}
+	response, err := api.svc.DescribeLogGroups(&input)
+	if len(response.LogGroups) > 1 {
+		return logGroup, fmt.Errorf("Found %d log groups by name: %s", len(response.LogGroups), *name)
+	}
+	if len(response.LogGroups) == 1 {
+		return response.LogGroups[0], nil
+	}
+	return logGroup, err
 }
