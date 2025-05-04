@@ -1,0 +1,25 @@
+{"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Action": [
+					"logs:CreateLogStream",
+					"logs:PutLogEvents"
+				],
+				"Resource": "arn:aws:logs:STRING_REPLACEMENT_AWS_REGION:STRING_REPLACEMENT_AWS_ACCOUNT_ID:log-group:*:log-stream:*"
+			},
+			{
+				"Effect": "Allow",
+				"Action": [
+					"logs:DescribeLogStreams",
+					"logs:CreateLogGroup"
+				],
+				"Resource": "arn:aws:logws:STRING_REPLACEMENT_AWS_REGION:STRING_REPLACEMENT_AWS_ACCOUNT_ID:log-group:*"
+			},
+			{
+				"Effect": "Allow",
+				"Action": "logs:DescribeLogGroups",
+				"Resource": "*"
+			}
+		]
+	}

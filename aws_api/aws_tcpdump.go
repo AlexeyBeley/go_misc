@@ -8,28 +8,31 @@ import (
 	"math"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
+	replacementEngine "github.com/AlexeyBeley/go_misc/replacement_engine"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
-type NatAnalyzerConfig struct {
+type AWSTCPDumpConfig struct {
 	Region         string
 	Subnets        []string
 	OutputFilePath string
+	IamDataDirPath string
 }
 
 func AWSTCPDumpStart(configFilePath string) error {
 
 	workPool := make(chan bool, 5)
 
-	config := NatAnalyzerConfig{}
+	config := AWSTCPDumpConfig{}
 
 	jsonString, err := os.ReadFile(configFilePath)
 	if err != nil {
@@ -47,7 +50,10 @@ func AWSTCPDumpStart(configFilePath string) error {
 		fmt.Printf("Error checking file  '%s': %v\n", config.OutputFilePath, err)
 	}
 	lg.FileDst = config.OutputFilePath
-	subnetLogGroupNames := provisionSubnetsFlowLogGroups(config.Region, config.Subnets)
+	subnetLogGroupNames, err := provisionSubnetsFlowLogGroups(&config)
+	if err != nil {
+		return err
+	}
 
 	for _, subnetId := range config.Subnets {
 		go StartSubnetRecording(&workPool, config.Region, subnetId, subnetLogGroupNames[subnetId])
@@ -59,28 +65,54 @@ func AWSTCPDumpStart(configFilePath string) error {
 
 }
 
-func provisionSubnetsFlowLogGroups(region string, subnetIds []string) map[string]string {
-	iamAPI := clients.IAMAPINew(nil)
-	policy := map[string]any{":": 1, "2": "2"}
-	roleName := "role-tcpdump"
-	iamAPI.ProvisionIamRole(policy, &roleName)
+func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string, error) {
+	iamAPI := clients.IAMAPINew(nil, &config.IamDataDirPath)
+
+	stsAPI := clients.STSAPINew(nil)
+	accountID, err := stsAPI.GetAccount()
+	if err != nil {
+		return nil, err
+	}
+	replacementValues := map[string]string{"STRING_REPLACEMENT_AWS_SERVICE_PRINCIPAL": "vpc-flow-logs.amazonaws.com",
+		"STRING_REPLACEMENT_AWS_ACCOUNT_ID": *accountID}
+	dstDir := filepath.Join(config.IamDataDirPath, "tmp")
+	err = replacementEngine.ReplaceInTemplateFiles(config.IamDataDirPath, dstDir, replacementValues)
+	if err != nil {
+		return nil, err
+	}
+
+	assumeFilePath := filepath.Join(dstDir, "cloudwatch_writer_service_assume_role.json")
+	assumeDocument, err := os.ReadFile(assumeFilePath)
+	strAssumeDocument := string(assumeDocument)
+
+	if err != nil {
+		fmt.Println("Error Reading file:", err)
+		return nil, err
+	}
+
+	roleName := "role-aws-tcpdump"
+	path := "/test/"
+	role, err := iamAPI.ProvisionIamCloudwatchWriterRole(&config.Region, &roleName, &strAssumeDocument, &path)
+	if err != nil {
+		panic(err)
+	}
 	ret := make(map[string]string)
 
 	var subnetValues []*string
 	//subnetIds = make([]*string, 0)
 
-	for _, subnetString := range subnetIds {
+	for _, subnetString := range config.Subnets {
 		subnetValues = append(subnetValues, &subnetString)
 	}
 
-	client := clients.GetEC2Client(&region)
+	client := clients.GetEC2Client(&config.Region)
 	Filters := []*ec2.Filter{{
 		Name:   aws.String("resource-id"), // Filter by resource ID
 		Values: subnetValues,
 	}}
 
 	flowLogObjects := make([]any, 0)
-	err := clients.DescribeFlowLogsPages(client, Filters, clients.AggregatorInitializer(&flowLogObjects))
+	err = clients.DescribeFlowLogsPages(client, Filters, clients.AggregatorInitializer(&flowLogObjects))
 	if err != nil {
 		panic(err)
 	}
@@ -93,20 +125,19 @@ func provisionSubnetsFlowLogGroups(region string, subnetIds []string) map[string
 		ret[*flowLog.ResourceId] = *flowLog.LogGroupName
 	}
 	resourceType := "Subnet"
-	for _, subnetId := range subnetIds {
-		api := clients.EC2APINew(&region, nil)
+	for _, subnetId := range config.Subnets {
+		api := clients.EC2APINew(&config.Region, nil)
 		_, ok := ret[subnetId]
 		if !ok {
-			logGroupName := provisionSubnetLogGroup(&region, &subnetId)
-			_, err := api.ProvisionFlowLog(&logGroupName, &resourceType, []*string{&subnetId})
+			logGroupName := provisionSubnetLogGroup(&config.Region, &subnetId)
+			_, err := api.ProvisionFlowLog(&logGroupName, &resourceType, []*string{&subnetId}, role.Arn)
 			if err != nil {
 				panic(err)
 			}
 			ret[subnetId] = logGroupName
 		}
-
 	}
-	return ret
+	return ret, nil
 }
 
 func provisionSubnetLogGroup(region *string, subnetId *string) (logGroupName string) {

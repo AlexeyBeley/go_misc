@@ -8,6 +8,11 @@ import (
 var lg = &(logger.Logger{})
 
 func main() {
-	config_file_path := "/tmp/SubnetRecordingConfig.json"
-	aws_api.AWSTCPDumpStart(config_file_path)
+	config_file_path := "/opt/aws_api_go/AWSTCPDumpConfig.json"
+	lg.Infof("Initializing: %s", config_file_path)
+	err := aws_api.AWSTCPDumpStart(config_file_path)
+	if err != nil {
+		panic(err)
+	}
+
 }
