@@ -76,13 +76,13 @@ func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string,
 	replacementValues := map[string]string{"STRING_REPLACEMENT_AWS_SERVICE_PRINCIPAL": "vpc-flow-logs.amazonaws.com",
 		"STRING_REPLACEMENT_AWS_ACCOUNT_ID": *accountID}
 	dstDir := filepath.Join(config.IamDataDirPath, "tmp")
-	err = replacementEngine.ReplaceInTemplateFiles(config.IamDataDirPath, dstDir, replacementValues)
+	dstFilePath, err := replacementEngine.ReplaceInTemplateFile(filepath.Join(config.IamDataDirPath, "template_cloudwatch_writer_service_assume_role.json"),
+		dstDir, replacementValues)
 	if err != nil {
 		return nil, err
 	}
 
-	assumeFilePath := filepath.Join(dstDir, "cloudwatch_writer_service_assume_role.json")
-	assumeDocument, err := os.ReadFile(assumeFilePath)
+	assumeDocument, err := os.ReadFile(dstFilePath)
 	strAssumeDocument := string(assumeDocument)
 
 	if err != nil {
@@ -99,7 +99,6 @@ func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string,
 	ret := make(map[string]string)
 
 	var subnetValues []*string
-	//subnetIds = make([]*string, 0)
 
 	for _, subnetString := range config.Subnets {
 		subnetValues = append(subnetValues, &subnetString)
@@ -107,7 +106,7 @@ func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string,
 
 	client := clients.GetEC2Client(&config.Region)
 	Filters := []*ec2.Filter{{
-		Name:   aws.String("resource-id"), // Filter by resource ID
+		Name:   aws.String("resource-id"),
 		Values: subnetValues,
 	}}
 
@@ -125,12 +124,13 @@ func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string,
 		ret[*flowLog.ResourceId] = *flowLog.LogGroupName
 	}
 	resourceType := "Subnet"
+	trafficType := "ALL"
 	for _, subnetId := range config.Subnets {
 		api := clients.EC2APINew(&config.Region, nil)
 		_, ok := ret[subnetId]
 		if !ok {
 			logGroupName := provisionSubnetLogGroup(&config.Region, &subnetId)
-			_, err := api.ProvisionFlowLog(&logGroupName, &resourceType, []*string{&subnetId}, role.Arn)
+			_, err := api.ProvisionFlowLog(&logGroupName, &resourceType, &trafficType, []*string{&subnetId}, role.Arn)
 			if err != nil {
 				panic(err)
 			}

@@ -185,8 +185,12 @@ func EC2APINew(region *string, profileName *string) *EC2API {
 	return &ret
 }
 
-func (api *EC2API) ProvisionFlowLog(logGroupName, resourceType *string, resourceIds []*string, roleArn *string) (*ec2.CreateFlowLogsOutput, error) {
-	input := ec2.CreateFlowLogsInput{LogGroupName: logGroupName, ResourceIds: resourceIds, ResourceType: resourceType, DeliverLogsPermissionArn: roleArn}
+func (api *EC2API) ProvisionFlowLog(logGroupName, resourceType, trafficType *string, resourceIds []*string, roleArn *string) (*ec2.CreateFlowLogsOutput, error) {
+	input := ec2.CreateFlowLogsInput{LogGroupName: logGroupName,
+		ResourceIds:              resourceIds,
+		ResourceType:             resourceType,
+		TrafficType:              trafficType,
+		DeliverLogsPermissionArn: roleArn}
 	reponse, err := api.svc.CreateFlowLogs(&input)
 	return reponse, err
 }

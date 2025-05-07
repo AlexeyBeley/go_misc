@@ -165,6 +165,11 @@ func (api *IAMAPI) ProvisionIamRole(role *Role) (err error) {
 		}
 		lg.Infof("Added Role inline policy: %v", createPolicyOutput)
 	}
+	ok, err = api.UpdateRoleInfo(role)
+	if !ok {
+		return fmt.Errorf("was not able to update role %v", role.Name)
+	}
+
 	return err
 }
 
@@ -186,7 +191,7 @@ func (api *IAMAPI) UpdateRoleInfo(role *Role) (bool, error) {
 	return true, nil
 }
 
-func (api *IAMAPI) ProvisionIamCloudwatchWriterRole(region, roleName, strAssumeDocument, path *string) (*iam.Role, error) {
+func (api *IAMAPI) ProvisionIamCloudwatchWriterRole(region, roleName, strAssumeDocument, path *string) (*Role, error) {
 	stsAPI := STSAPINew(api.ProfileName)
 	accountID, err := stsAPI.GetAccount()
 	if err != nil {
@@ -195,12 +200,11 @@ func (api *IAMAPI) ProvisionIamCloudwatchWriterRole(region, roleName, strAssumeD
 	replacementValues := map[string]string{"STRING_REPLACEMENT_AWS_REGION": *region,
 		"STRING_REPLACEMENT_AWS_ACCOUNT_ID": *accountID}
 	dstDir := filepath.Join(*api.DataDirPath, "tmp")
-	err = replacementEngine.ReplaceInTemplateFiles(*api.DataDirPath, dstDir, replacementValues)
+	dstFilePath, err := replacementEngine.ReplaceInTemplateFile(filepath.Join(*api.DataDirPath, "template_cloudwatch_writer_policy.json"), dstDir, replacementValues)
 	if err != nil {
 		return nil, err
 	}
 
-	dstFilePath := filepath.Join(dstDir, "cloudwatch_writer_policy.json")
 	document, err := os.ReadFile(dstFilePath)
 	strDocument := string(document)
 
@@ -225,5 +229,5 @@ func (api *IAMAPI) ProvisionIamCloudwatchWriterRole(region, roleName, strAssumeD
 
 	err = api.ProvisionIamRole(&role)
 
-	return nil, err
+	return &role, err
 }

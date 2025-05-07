@@ -1,4 +1,5 @@
 {"Subnets": ["subnet-1", "subnet-2", "subent-3"],
 "Region": "us-east-2",
-"OutputFilePath": "/tmp/nat_analyzer.log"
+"OutputFilePath": "/tmp/nat_analyzer.log",
+"IamDataDirPath": "/opt/aws_api/IamDataDir"
 }

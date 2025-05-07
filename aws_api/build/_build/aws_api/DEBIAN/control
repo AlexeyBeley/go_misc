@@ -1,0 +1,8 @@
+Package: aws_api
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Alexey B your.email@example.com
+Description: AWS API. Infrastructure developer's experience implemeted in Go.
+Section: custom
+Priority: optional
+Depends: # List any dependencies here (e.g., libc6 (>= 2.30))
