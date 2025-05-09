@@ -37,7 +37,7 @@ compile: init_build_dir install-requirements compile_raw
 
 
 compile_raw:
-	mv go_prod.mod go.mod &&\
+	mv ../go_prod.mod ../go.mod &&\
 	go mod tidy &&\
 	GOOS=linux GOARCH=amd64 go build -o ${APP_BUILD_DIR}/${APP_NAME} ../cmd/aws_api/aws_tcpdump_main.go
 
