@@ -10,7 +10,7 @@ APP_BUILD_DIR:=${BUILD_TMP_DIR}/${APP_NAME}
 
 GOENVPATH:=$(go env GOPATH)
 
-intall-golang:
+install-golang:
 	wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz &&\
 	sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz &&\
 	export PATH=$PATH:/usr/local/go/bin
@@ -33,7 +33,9 @@ init_build_dir:
 	cp data/* ${APP_BUILD_DIR}/opt/${APP_NAME}/IamDataDir
 
 
-compile: init_build_dir install-requirements
+compile: init_build_dir install-requirements build
+
+build:
     mv go_prod.mod go.mod &&\
 	go mod tidy &&\
 	GOOS=linux GOARCH=amd64 go build -o ${APP_BUILD_DIR}/${APP_NAME} ../cmd/aws_api/aws_tcpdump_main.go
