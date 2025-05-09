@@ -8,14 +8,16 @@ BUILD_TMP_DIR:= ${BUILD_DIR}/_build
 APP_NAME := aws_api
 APP_BUILD_DIR:=${BUILD_TMP_DIR}/${APP_NAME}
 
+GOENVPATH:=$(go env GOPATH)
+
 intall-golang:
-	curl https://go.dev/dl/go1.24.3.linux-amd64.tar.gz
-	rm -rf /usr/local/go && tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz
+	wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz &&\
+	sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz &&\
 	export PATH=$PATH:/usr/local/go/bin
-	 $HOME/.profile.
+	//$HOME/.profile.
 
 install-requirements intall-golang:
-	sudo apt update
+	sudo apt update &&\
 	sudo apt -yff install dpkg-dev
 
 test:
@@ -32,14 +34,9 @@ init_build_dir:
 
 
 compile: init_build_dir install-requirements
+	go mod tidy &&\
 	GOOS=linux GOARCH=amd64 go build -o ${APP_BUILD_DIR}/${APP_NAME} ../cmd/aws_api/aws_tcpdump_main.go
 
 copy_files: compile
 	cp ${APP_BUILD_DIR}/${APP_NAME} ${APP_BUILD_DIR}/usr/local/bin &&\
-	cp ../data ${APP_BUILD_DIR}/usr/local/bin
-
-
-
-
-
-
+	cp ../cmd/aws_api/SubnetRecordingConfig.json ${APP_BUILD_DIR}/etc/${APP_NAME}

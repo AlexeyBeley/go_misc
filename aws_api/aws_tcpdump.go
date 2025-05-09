@@ -26,6 +26,7 @@ type AWSTCPDumpConfig struct {
 	Subnets        []string
 	OutputFilePath string
 	IamDataDirPath string
+	AWSProfile     string
 }
 
 func AWSTCPDumpStart(configFilePath string) error {
@@ -66,9 +67,9 @@ func AWSTCPDumpStart(configFilePath string) error {
 }
 
 func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string, error) {
-	iamAPI := clients.IAMAPINew(nil, &config.IamDataDirPath)
+	iamAPI := clients.IAMAPINew(&config.AWSProfile, &config.IamDataDirPath)
 
-	stsAPI := clients.STSAPINew(nil)
+	stsAPI := clients.STSAPINew(&config.AWSProfile)
 	accountID, err := stsAPI.GetAccount()
 	if err != nil {
 		return nil, err
@@ -126,10 +127,10 @@ func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string,
 	resourceType := "Subnet"
 	trafficType := "ALL"
 	for _, subnetId := range config.Subnets {
-		api := clients.EC2APINew(&config.Region, nil)
+		api := clients.EC2APINew(&config.Region, &config.AWSProfile)
 		_, ok := ret[subnetId]
 		if !ok {
-			logGroupName := provisionSubnetLogGroup(&config.Region, &subnetId)
+			logGroupName := provisionSubnetLogGroup(config, &subnetId)
 			_, err := api.ProvisionFlowLog(&logGroupName, &resourceType, &trafficType, []*string{&subnetId}, role.Arn)
 			if err != nil {
 				panic(err)
@@ -140,8 +141,8 @@ func provisionSubnetsFlowLogGroups(config *AWSTCPDumpConfig) (map[string]string,
 	return ret, nil
 }
 
-func provisionSubnetLogGroup(region *string, subnetId *string) (logGroupName string) {
-	api := clients.CloudwatchLogsAPINew(region, nil)
+func provisionSubnetLogGroup(config *AWSTCPDumpConfig, subnetId *string) (logGroupName string) {
+	api := clients.CloudwatchLogsAPINew(&config.Region, &config.AWSProfile)
 	logGroupName = "tcpdump-" + *subnetId
 	existingLogGroup, err := api.GetLogGroup(&logGroupName)
 
