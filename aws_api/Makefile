@@ -33,10 +33,10 @@ init_build_dir:
 	cp data/* ${APP_BUILD_DIR}/opt/${APP_NAME}/IamDataDir
 
 
-compile: init_build_dir install-requirements build
+compile: init_build_dir install-requirements compile_raw
 
 
-build:
+compile_raw:
 	mv go_prod.mod go.mod &&\
 	go mod tidy &&\
 	GOOS=linux GOARCH=amd64 go build -o ${APP_BUILD_DIR}/${APP_NAME} ../cmd/aws_api/aws_tcpdump_main.go
