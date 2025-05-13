@@ -72,7 +72,7 @@ func AddTagsNetworkInterfaces(config ModifyTagsConfig) error {
 			}
 			return err
 		}
-		lg.Infof("%s", createTagsOutput)
+		lg.InfoF("%s", createTagsOutput)
 
 	}
 	return nil
@@ -96,10 +96,10 @@ func AddTagsNatGateways(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.NatGatewayId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -123,10 +123,10 @@ func AddTagsInstances(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.InstanceId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -149,10 +149,10 @@ func AddTagsElasticIps(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.AllocationId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -175,10 +175,10 @@ func AddTagsVolumes(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.VolumeId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -201,10 +201,10 @@ func AddTagsLaunchTemplates(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.LaunchTemplateId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -229,10 +229,10 @@ func AddTagsImages(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.ImageId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -257,10 +257,10 @@ func AddTagsSnapshots(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.SnapshotId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -283,10 +283,10 @@ func AddTagsKeyPairs(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.KeyPairId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -309,10 +309,10 @@ func AddTagsSecurityGroups(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.Tags, config.AddTags, obj.GroupId, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -335,10 +335,10 @@ func AddTagsLoadBalancers(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.AddTags(config.AddTags, obj.LoadBalancerArn, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -361,10 +361,10 @@ func AddTagsTargetGroups(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.AddTags(config.AddTags, obj.TargetGroupArn, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -391,7 +391,7 @@ func AddTagsAutoScalingGroups(config ModifyTagsConfig) error {
 		err := api.CreateOrUpdateTags(objTags, config.AddTags, obj.AutoScalingGroupName, &resourceType, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
 
@@ -416,10 +416,10 @@ func AddTagsRDSClusters(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.TagList, config.AddTags, obj.DBClusterArn, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -442,10 +442,10 @@ func AddTagsRDSInstances(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.CreateTags(obj.TagList, config.AddTags, obj.DBInstanceArn, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil
@@ -468,10 +468,10 @@ func AddTagsS3Buckets(config ModifyTagsConfig) error {
 		createTagsOutput, err := api.AddTags(config.AddTags, obj, false)
 		if err != nil {
 			ret := err.Error()
-			lg.Infof("%s", ret)
+			lg.InfoF("%s", ret)
 			return err
 		}
-		lg.Infof("Create tags response: %s", createTagsOutput)
+		lg.InfoF("Create tags response: %s", createTagsOutput)
 
 	}
 	return nil

@@ -20,7 +20,7 @@ func GetAutoscalingAPI(region *string, profileName *string) *AutoscalingAPI {
 		Config:            aws.Config{Region: region},
 		Profile:           *profileName,
 	}))
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := autoscaling.New(sess)
 	ret := AutoscalingAPI{svc: svc}
 	return &ret
@@ -62,7 +62,7 @@ func (api *AutoscalingAPI) CreateOrUpdateTags(existingTags []*autoscaling.Tag, A
 	}
 
 	req := autoscaling.CreateOrUpdateTagsInput{Tags: Tags}
-	lg.Infof("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
+	lg.InfoF("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
 	_, err := api.svc.CreateOrUpdateTags(&req)
 	return err
 }

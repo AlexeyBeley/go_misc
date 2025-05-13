@@ -19,7 +19,7 @@ func STSAPINew(profileName *string) *STSAPI {
 		SharedConfigState: session.SharedConfigEnable,
 		Profile:           *profileName,
 	}))
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := sts.New(sess)
 	ret := STSAPI{svc: svc, ProfileName: profileName}
 	return &ret

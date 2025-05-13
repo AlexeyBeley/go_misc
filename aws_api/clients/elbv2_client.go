@@ -20,7 +20,7 @@ func ELBV2APINew(region *string, profileName *string) *ELBV2API {
 		Config:            aws.Config{Region: region},
 		Profile:           *profileName,
 	}))
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := elbv2.New(sess)
 	ret := ELBV2API{svc: svc}
 	return &ret
@@ -85,7 +85,7 @@ func (api *ELBV2API) AddTags(AddTags map[string]string, resource *string, declar
 	if len(Tags) == 0 {
 		return nil, nil
 	}
-	lg.Infof("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
+	lg.InfoF("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
 	createTagsOutput, err := api.svc.AddTags(&elbv2.AddTagsInput{ResourceArns: []*string{resource}, Tags: Tags})
 	return createTagsOutput, err
 }

@@ -54,10 +54,10 @@ func (t *BST) Insert(data TreeData) {
 		panic(data)
 	}
 
-	lg.Debugf("In %d inserting data: %d\n", t.Data, data)
+	lg.DebugF("In %d inserting data: %d\n", t.Data, data)
 	if t.Data.Compare(data) > 0 {
 		if t.Left == nil {
-			lg.Debugf("In %d creating left\n", t.Data)
+			lg.DebugF("In %d creating left\n", t.Data)
 			t.Left = &BST{Data: IntDataValue}
 			return
 		}
@@ -66,7 +66,7 @@ func (t *BST) Insert(data TreeData) {
 	}
 
 	if t.Right == nil {
-		lg.Debugf("In %d creating right", t.Data)
+		lg.DebugF("In %d creating right", t.Data)
 		t.Right = &BST{Data: IntDataValue}
 		return
 	}

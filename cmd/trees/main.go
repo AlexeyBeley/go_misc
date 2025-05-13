@@ -55,7 +55,7 @@ func Test() {
 	Add(something, &Internal{})
 	Add(something, &Internal{})
 
-	lg.Infof("Count: %d", something.Count())
+	lg.InfoF("Count: %d", something.Count())
 
 }
 

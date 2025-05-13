@@ -26,7 +26,7 @@ func S3APINew(region *string, profileName *string) *S3API {
 		Profile:           *profileName,
 	}))
 
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := s3.New(sess)
 	ret := S3API{svc: svc, region: region, profileName: profileName}
 	return &ret
@@ -88,7 +88,7 @@ func (api *S3API) AddTags(AddTags map[string]string, bucket *s3.Bucket, declarat
 	if len(Tagging.TagSet) == len(existingTags) {
 		return nil, nil
 	}
-	lg.Infof("Adding tags: resource: %s, tags: %v, Current tags: %v", *bucket.Name, Tagging.TagSet, existingTags)
+	lg.InfoF("Adding tags: resource: %s, tags: %v, Current tags: %v", *bucket.Name, Tagging.TagSet, existingTags)
 
 	createTagsOutput, err := api.svc.PutBucketTagging(&s3.PutBucketTaggingInput{Bucket: bucket.Name, Tagging: &Tagging})
 	return createTagsOutput, err

@@ -30,7 +30,7 @@ func IAMAPINew(profileName *string, DataDirPath *string) *IAMAPI {
 		SharedConfigState: session.SharedConfigEnable,
 		Profile:           *profileName,
 	}))
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := iam.New(sess)
 	ret := IAMAPI{svc: svc, DataDirPath: DataDirPath, ProfileName: profileName}
 	return &ret
@@ -154,7 +154,7 @@ func (api *IAMAPI) ProvisionIamRole(role *Role) (err error) {
 		if err != nil {
 			return err
 		}
-		lg.Infof("Created role: %v", createRoleOutput)
+		lg.InfoF("Created role: %v", createRoleOutput)
 	}
 
 	for _, policy := range role.InlinePolicies {
@@ -163,7 +163,7 @@ func (api *IAMAPI) ProvisionIamRole(role *Role) (err error) {
 		if err != nil {
 			return err
 		}
-		lg.Infof("Added Role inline policy: %v", createPolicyOutput)
+		lg.InfoF("Added Role inline policy: %v", createPolicyOutput)
 	}
 	ok, err = api.UpdateRoleInfo(role)
 	if !ok {

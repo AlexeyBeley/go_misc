@@ -179,7 +179,7 @@ func EC2APINew(region *string, profileName *string) *EC2API {
 		Config:            aws.Config{Region: region},
 		Profile:           *profileName,
 	}))
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := ec2.New(sess)
 	ret := EC2API{svc: svc}
 	return &ret
@@ -231,7 +231,7 @@ func (api *EC2API) CreateTags(existingTags []*ec2.Tag, AddTags map[string]string
 	if len(Tags) == 0 {
 		return nil, nil
 	}
-	lg.Infof("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
+	lg.InfoF("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
 	createTagsOutput, err := api.svc.CreateTags(&ec2.CreateTagsInput{Resources: []*string{resource}, Tags: Tags})
 	return createTagsOutput, err
 }
@@ -355,5 +355,25 @@ func (api *EC2API) DescribeSecurityGroups(callback GenericCallback, Input *ec2.D
 	if callbackErr != nil {
 		return callbackErr
 	}
+	return err
+}
+
+func (api *EC2API) GetNetworkInterfaces(callback GenericCallback, describeNetworkInterfacesInput *ec2.DescribeNetworkInterfacesInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeNetworkInterfacesPages(describeNetworkInterfacesInput, func(page *ec2.DescribeNetworkInterfacesOutput, notHasNextPage bool) bool {
+		// stop when returns False
+		pageNum++
+		for _, nInt := range page.NetworkInterfaces {
+			if callbackErr = callback(nInt); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+
 	return err
 }

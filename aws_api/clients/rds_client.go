@@ -20,7 +20,7 @@ func RDSAPINew(region *string, profileName *string) *RDSAPI {
 		Config:            aws.Config{Region: region},
 		Profile:           *profileName,
 	}))
-	lg.Infof("AWS profile: %s\n", *profileName)
+	lg.InfoF("AWS profile: %s\n", *profileName)
 	svc := rds.New(sess)
 	ret := RDSAPI{svc: svc}
 	return &ret
@@ -80,7 +80,7 @@ func (api *RDSAPI) CreateTags(existingTags []*rds.Tag, AddTags map[string]string
 	if len(Tags) == 0 {
 		return nil, nil
 	}
-	lg.Infof("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
+	lg.InfoF("Adding tags: resource: %s, tags: %v, Current tags: %v", *resource, Tags, existingTags)
 	createTagsOutput, err := api.svc.AddTagsToResource(&rds.AddTagsToResourceInput{ResourceName: resource, Tags: Tags})
 	return createTagsOutput, err
 }
