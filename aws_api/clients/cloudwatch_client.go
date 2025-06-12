@@ -227,7 +227,7 @@ func (api *CloudwatchLogsAPI) GetLogGroup(name *string) (logGroup *cloudwatchlog
 	input := cloudwatchlogs.DescribeLogGroupsInput{LogGroupNamePattern: name}
 	response, err := api.svc.DescribeLogGroups(&input)
 	if len(response.LogGroups) > 1 {
-		return logGroup, fmt.Errorf("Found %d log groups by name: %s", len(response.LogGroups), *name)
+		return logGroup, fmt.Errorf("found %d log groups by name: %s", len(response.LogGroups), *name)
 	}
 	if len(response.LogGroups) == 1 {
 		return response.LogGroups[0], nil

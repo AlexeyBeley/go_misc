@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/AlexeyBeley/go_common/logger"
+	replacementEngine "github.com/AlexeyBeley/go_common/replacement_engine"
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
-	replacementEngine "github.com/AlexeyBeley/go_misc/replacement_engine"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -434,7 +434,7 @@ func AWSTCPDumpAnalize(filePath string) (string, error) {
 	}
 
 	if maxInInterface.NetworkInterfaceId != nil {
-		lg.InfoF("Max In: %v, Max Out: %v", *maxInInterface.NetworkInterfaceId, *maxOutInterface.NetworkInterfaceId)
+		DebugLogger.InfoF("Max In:  %v: %d , Max Out: %v: %d", *maxInInterface.NetworkInterfaceId, maxInBytes, *maxOutInterface.NetworkInterfaceId, maxOutBytes)
 	}
 	return ret, nil
 }
