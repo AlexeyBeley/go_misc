@@ -3,7 +3,7 @@ module github.com/AlexeyBeley/go_misc
 go 1.23.5
 
 require (
-	github.com/AlexeyBeley/go_common v0.0.1
+	github.com/AlexeyBeley/go_common v0.0.2
 	github.com/aws/aws-sdk-go v1.55.6
 )
 
@@ -26,4 +26,3 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 )
-
