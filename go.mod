@@ -27,4 +27,3 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 )
 
-replace github.com/AlexeyBeley/go_common => ../go_common
