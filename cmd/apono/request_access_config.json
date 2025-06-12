@@ -1,0 +1,13 @@
+{
+"APIToken":"Apono-User-AccessToken",
+"UserId": "Apono-userID",
+"IntegrationID": "Apono-integrationID",
+"ResourceIdPermissionPairs": [
+["Apono_ResourceID_1", "permission_name"],
+["Apono_ResourceID_2", "permission_name"],
+["Apono_ResourceID_3", "other_permission_name"]
+],
+"AwsAppsURL": "https://secret.awsapps.com/start",
+"Justification":"Horey granted access",
+"AwsAccountURL":"https://open_this_in_my.browser"
+}
