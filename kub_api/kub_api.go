@@ -2,12 +2,15 @@ package kub_api
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -20,12 +23,13 @@ import (
 )
 
 type KubAPI struct {
-	Kubeconfig *string
-	clientset  *kubernetes.Clientset
-	Namespace  *string
+	Kubeconfig   *string
+	clientset    *kubernetes.Clientset
+	Namespace    *string
+	FieldManager *string
 }
 
-type Job struct {
+type JobFlat struct {
 	JobName                 *string
 	ContainerName           *string
 	ContainerImage          *string
@@ -34,7 +38,164 @@ type Job struct {
 	UID                     *types.UID
 }
 
-func (job *Job) GenerateBatchJob() (ret *batchv1.Job, err error) {
+type DeploymentFlat struct {
+	AppName             *string
+	Namespace           *string
+	Image               *string
+	ImagePullSecretName *string
+	Ports               []int32
+}
+
+func (depf *DeploymentFlat) GenerateRequest() (*appsv1.Deployment, error) {
+	containerPorts := []corev1.ContainerPort{}
+	for _, port := range depf.Ports {
+		var name string
+		switch port {
+		case 80:
+			name = "http"
+		case 443:
+			name = "https"
+		default:
+			name = "tcp" + strconv.Itoa(int(port))
+		}
+
+		containerPorts = append(containerPorts, corev1.ContainerPort{
+			ContainerPort: port,
+			Name:          name, // Named port for service/ingress target
+		})
+	}
+
+	deployment := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",    // <-- Ensure this is correct
+			Kind:       "Deployment", // <-- Ensure this is correct
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *depf.AppName + "-deployment",
+			Namespace: *depf.Namespace,
+			Labels:    map[string]string{"app": *depf.AppName},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(1), // One replica for simplicity
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": *depf.AppName},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": *depf.AppName},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  *depf.AppName + "-container",
+							Image: *depf.Image,
+							Ports: containerPorts,
+						},
+					},
+					ImagePullSecrets: []corev1.LocalObjectReference{corev1.LocalObjectReference{Name: *depf.ImagePullSecretName}},
+				},
+			},
+		},
+	}
+	return deployment, nil
+}
+
+type IngressFlat struct {
+	Name               *string
+	Namespace          *string
+	IngressClassName   *string
+	RuleHost           *string
+	BackendServiceName *string
+	BackendServicePort *int32
+	TLSSecretName      *string
+	Annotations        map[string]string
+}
+
+func (ingressFlat *IngressFlat) GenerateRequest() (*networkingv1.Ingress, error) {
+	ingress := &networkingv1.Ingress{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "networking.k8s.io/v1",
+			Kind:       "Ingress",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        *ingressFlat.Name,
+			Namespace:   *ingressFlat.Namespace, // Make sure this namespace exists in your cluster
+			Annotations: ingressFlat.Annotations,
+		},
+		Spec: networkingv1.IngressSpec{
+			IngressClassName: ingressFlat.IngressClassName, // This should match your Ingress Controller's class
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: *ingressFlat.RuleHost,
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: func() *networkingv1.PathType { pt := networkingv1.PathTypePrefix; return &pt }(), // Use helper for pointer to PathType
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: *ingressFlat.BackendServiceName, // Name of the Service your Ingress routes to
+											Port: networkingv1.ServiceBackendPort{
+												Number: *ingressFlat.BackendServicePort, // Port of that Service
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			TLS: []networkingv1.IngressTLS{ // TLS configuration
+				{
+					Hosts: []string{
+						*ingressFlat.RuleHost,
+					},
+					SecretName: *ingressFlat.TLSSecretName, // As per provided YAML, SecretName is omitted.
+					// For networking.k8s.io/v1, SecretName is a string field.
+					// An empty string here would imply using a default certificate
+					// configured on the Nginx Ingress Controller if it supports it,
+					// or it might indicate a missing Secret for TLS if the controller
+					// doesn't have a default.
+				},
+			},
+		},
+	}
+	return ingress, nil
+}
+
+type ServiceFlat struct {
+	Name      *string
+	Namespace *string
+	Port      *int32
+	Selector  map[string]string
+	Labels    map[string]string
+}
+
+func (serviceFlat *ServiceFlat) GenerateRequest() (*corev1.Service, error) {
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *serviceFlat.Name,
+			Namespace: *serviceFlat.Namespace,
+			Labels:    serviceFlat.Labels,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: serviceFlat.Selector,
+			Ports: []corev1.ServicePort{
+				{
+					Name:     "http",
+					Port:     *serviceFlat.Port,
+					Protocol: corev1.ProtocolTCP,
+				},
+			},
+			Type: corev1.ServiceTypeClusterIP, // Use a ClusterIP for internal access
+		},
+	}
+	return service, nil
+}
+
+func (job *JobFlat) GenerateRequest() (ret *batchv1.Job, err error) {
 	ret = new(batchv1.Job)
 	*ret = batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -74,12 +235,7 @@ func KubAPINew() (*KubAPI, error) {
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
-		fmt.Printf("Error building kubeconfig: %v\n", err)
-		//config, err = clientcmd.InClusterConfig()
-		if err != nil {
-			fmt.Printf("Error building in-cluster config: %v\n", err)
-			os.Exit(1)
-		}
+		return nil, fmt.Errorf("error building kubeconfig: %v", err)
 	}
 
 	// Create a Kubernetes kapi.clientset
@@ -89,6 +245,7 @@ func KubAPINew() (*KubAPI, error) {
 		os.Exit(1)
 	}
 	ret.clientset = clientset
+	ret.FieldManager = strPtr("horey_kub_api-go-updater")
 
 	return &ret, nil
 }
@@ -123,12 +280,15 @@ func (kapi *KubAPI) GetActiveNamespace() (ret *string, err error) {
 	return kapi.Namespace, nil
 }
 
-func (kapi *KubAPI) CreateJob(job *Job) error {
+func (kapi *KubAPI) CreateJob(job *JobFlat) error {
 	namespace, err := kapi.GetActiveNamespace()
 	if err != nil {
 		return err
 	}
-	batchJob, err := job.GenerateBatchJob()
+	batchJob, err := job.GenerateRequest()
+	if err != nil {
+		return err
+	}
 	batchJob.ObjectMeta.Namespace = *namespace
 
 	createdJob, err := kapi.clientset.BatchV1().Jobs(*kapi.Namespace).Create(context.TODO(), batchJob, metav1.CreateOptions{})
@@ -142,26 +302,29 @@ func (kapi *KubAPI) CreateJob(job *Job) error {
 	return nil
 }
 
-func (kapi *KubAPI) DeleteJob(job *Job) error {
+func (kapi *KubAPI) DeleteJob(job *JobFlat) error {
 	namespace, err := kapi.GetActiveNamespace()
 	if err != nil {
 		return err
 	}
-	batchJob, err := job.GenerateBatchJob()
+	batchJob, err := job.GenerateRequest()
+	if err != nil {
+		panic(fmt.Sprintf("Error generating request: %v\n", err))
+	}
+
 	batchJob.ObjectMeta.Namespace = *namespace
 
 	err = kapi.clientset.BatchV1().Jobs(*kapi.Namespace).Delete(context.TODO(), *job.JobName, metav1.DeleteOptions{})
 
 	if err != nil {
-		fmt.Printf("Error listing namespaces: %v\n", err)
-		os.Exit(1)
+		panic(fmt.Sprintf("Error deleting job: %v\n", err))
 	}
 
 	fmt.Printf("Job deleted successfully! Name: %s, Namespace: %s\n", *job.JobName, *kapi.Namespace)
 	return nil
 }
 
-func (kapi *KubAPI) CreatePod(job *Job, podID string) error {
+func (kapi *KubAPI) CreatePod(job *JobFlat, podID string) error {
 	podName := fmt.Sprintf("%s-%s-%s", *job.JobName, *job.JobName, podID)
 	batchv1JobP, err := kapi.Getbatchv1Job(job)
 	if err != nil {
@@ -212,6 +375,9 @@ func (kapi *KubAPI) PrunePods(jobName *string) error {
 	allPods, err := kapi.clientset.CoreV1().Pods(*kapi.Namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: "job-name=" + *jobName, // Select pods created by this job
 	})
+	if err != nil {
+		return err
+	}
 	podCount := len(allPods.Items)
 	_ = allPods
 	podWatch, err := kapi.clientset.CoreV1().Pods(*kapi.Namespace).Watch(context.TODO(), metav1.ListOptions{
@@ -253,7 +419,7 @@ func (kapi *KubAPI) PrunePods(jobName *string) error {
 	return nil
 }
 
-func (kapi *KubAPI) Getbatchv1Job(job *Job) (*batchv1.Job, error) {
+func (kapi *KubAPI) Getbatchv1Job(job *JobFlat) (*batchv1.Job, error) {
 	ret, err := kapi.clientset.BatchV1().Jobs(*kapi.Namespace).Get(context.TODO(), *job.JobName, metav1.GetOptions{})
 	return ret, err
 }
@@ -276,25 +442,13 @@ func (kapi *KubAPI) GetLogs() {
 	*/
 }
 
-func (kapi *KubAPI) CreateService(serviceName *string, port int32, selector map[string]string) error {
+func (kapi *KubAPI) CreateService(serviceF *ServiceFlat) error {
 	// Create the Service
 	// Define the Service object
-	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      *serviceName,
-			Namespace: *kapi.Namespace,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: selector,
-			Ports: []corev1.ServicePort{
-				{
-					Name:     "http",
-					Port:     port,
-					Protocol: corev1.ProtocolTCP,
-				},
-			},
-			Type: corev1.ServiceTypeClusterIP, // Use a ClusterIP for internal access
-		},
+	serviceF.Namespace = kapi.Namespace
+	service, err := serviceF.GenerateRequest()
+	if err != nil {
+		return err
 	}
 	createdService, err := kapi.clientset.CoreV1().Services(*kapi.Namespace).Create(context.TODO(), service, metav1.CreateOptions{})
 	if err != nil {
@@ -392,5 +546,162 @@ func (kapi *KubAPI) ProvisionNamespace(name *string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (kapi *KubAPI) ListIngressClasses() ([]networkingv1.IngressClass, error) {
+	// NetworkingV1() gives access to the networking.k8s.io/v1 API group
+	// IngressClasses() gives access to the IngressClass resource
+	// List() retrieves a list of these resources
+	ingressClassList, err := kapi.clientset.NetworkingV1().IngressClasses().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error listing IngressClasses: %w", err)
+	}
+	return ingressClassList.Items, nil
+}
+
+func int32Ptr(i int32) *int32 {
+	return &i
+}
+
+func strPtr(src string) *string {
+	return &src
+}
+
+func boolPtr(src bool) *bool {
+	return &src
+}
+
+func (kapi *KubAPI) CreateDeployment(deploymentFlat *DeploymentFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if deploymentFlat.Namespace == nil {
+		deploymentFlat.Namespace = kapi.Namespace
+	}
+
+	deploymentAPI, err := deploymentFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+	_, err = kapi.clientset.AppsV1().Deployments(*namespace).Create(context.TODO(), deploymentAPI, metav1.CreateOptions{})
+	if err != nil {
+		if os.IsExist(err) {
+			fmt.Printf("Deployment '%s' already exists. Skipping creation.\n", deploymentAPI.Name)
+		} else {
+			return fmt.Errorf("rrror creating Deployment: %v", err)
+		}
+	} else {
+		fmt.Println("Deployment created successfully.")
+	}
+	return nil
+}
+
+func (kapi *KubAPI) UpdateDeployment(deploymentFlat *DeploymentFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if deploymentFlat.Namespace == nil {
+		deploymentFlat.Namespace = kapi.Namespace
+	}
+
+	request, err := deploymentFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+	patchBytes, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("error marshaling desired Deployment to JSON: %v", err)
+	}
+
+	updatedDeployment, err := kapi.clientset.AppsV1().Deployments(*namespace).Patch(context.TODO(), request.Name, types.ApplyPatchType, patchBytes,
+		metav1.PatchOptions{
+			FieldManager: *kapi.FieldManager, // Provide the FieldManager
+			Force:        boolPtr(true),      // Use force=true for initial adoption or to resolve conflicts
+		})
+	if err != nil {
+		return fmt.Errorf("error performing Server-Side Apply patch on Deployment: %v", err)
+	}
+
+	fmt.Printf("Deployment '%s' updated successfully!\n", updatedDeployment.Name)
+	fmt.Printf("New Image: %s\n", updatedDeployment.Spec.Template.Spec.Containers[0].Image)
+	fmt.Printf("New Replicas: %d\n", *updatedDeployment.Spec.Replicas)
+	return nil
+}
+
+func (kapi *KubAPI) CreateIngress(ingressFlat *IngressFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if ingressFlat.Namespace == nil {
+		ingressFlat.Namespace = namespace
+	}
+
+	ingress, err := ingressFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+	_, err = kapi.clientset.NetworkingV1().Ingresses(ingress.Namespace).Create(context.TODO(), ingress, metav1.CreateOptions{})
+	if err != nil {
+		if os.IsExist(err) {
+			fmt.Printf("Ingress '%s' already exists. Skipping creation.\n", ingress.Name)
+		} else {
+			return fmt.Errorf("error creating Ingress: %v", err)
+		}
+	} else {
+		fmt.Println("Ingress created successfully.")
+	}
+	return nil
+}
+
+func (kapi *KubAPI) UpdateIngress(ingressFlat *IngressFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if ingressFlat.Namespace == nil {
+		ingressFlat.Namespace = namespace
+	}
+
+	desiredIngress, err := ingressFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+	// --- Step 2: Marshal the desired Ingress object to JSON bytes ---
+	patchBytes, err := json.Marshal(desiredIngress)
+	if err != nil {
+		return fmt.Errorf("error marshaling desired Ingress to JSON: %v", err)
+	}
+
+	// --- Step 3: Perform the Server-Side Apply Patch ---
+
+	fmt.Printf("Updating Ingress '%s' in namespace '%s'\n",
+		*ingressFlat.Name, *namespace)
+
+	updatedIngress, err := kapi.clientset.NetworkingV1().Ingresses(*namespace).Patch(
+		context.TODO(),
+		*ingressFlat.Name,
+		types.ApplyPatchType, // Specify Server-Side Apply patch type
+		patchBytes,
+		metav1.PatchOptions{
+			FieldManager: *kapi.FieldManager,
+			Force:        boolPtr(true), // Force initial adoption/overwrite conflicts
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error performing Server-Side Apply patch on Ingress: %v", err)
+	}
+
+	fmt.Printf("Ingress '%s' updated successfully!\n", updatedIngress.Name)
+	fmt.Printf("New Host: %s\n", updatedIngress.Spec.Rules[0].Host)
+	fmt.Printf("New Path: %s\n", updatedIngress.Spec.Rules[0].IngressRuleValue.HTTP.Paths[0].Path)
+	fmt.Printf("New proxy-read-timeout: %s\n", updatedIngress.ObjectMeta.Annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"])
 	return nil
 }

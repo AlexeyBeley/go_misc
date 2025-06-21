@@ -68,3 +68,5 @@ require (
 	k8s.io/api v0.33.1
 	k8s.io/client-go v0.33.1
 )
+
+replace github.com/AlexeyBeley/go_common => ../go_common
