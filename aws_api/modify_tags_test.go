@@ -21,7 +21,7 @@ func LoadDynamicConfig(configFilePath string) (config any, err error) {
 }
 
 func loadRealConfig() ModifyTagsConfig {
-	conf_path := "/tmp/ModifyTagsConfig.json"
+	conf_path := "/opt/ModifyTagsConfig.json"
 	config, err := LoadDynamicConfig(conf_path)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -189,6 +189,17 @@ func TestAddTagsS3Buckets(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
 		err := AddTagsS3Buckets(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+
+func TestCheckTagsECSTaskdefinitions(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := CheckTagsECSTaskDefinitions(realConfig)
 		if err != nil {
 			t.Errorf("%v", err)
 		}

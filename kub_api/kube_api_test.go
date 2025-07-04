@@ -6,10 +6,13 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
 const serviceNameConst string = "test-service"
+const RoleName string = "role_test"
+const ServiceAccountName string = "service-account-test"
 
 func LoadDynamicConfig() (config any, err error) {
 	configFilePath := "/opt/kube_api_test.json"
@@ -33,6 +36,8 @@ type TestConfig struct {
 	RuleHost            *string           `json:"RuleHost"`
 	TLSSecretName       *string           `json:"TLSSecretName"`
 	Annotations         map[string]string `json:"Annotations"`
+	RunnableJobName     *string           `json:"RunnableJobName"`
+	NamespaceLabels     map[string]string `json:"NamespaceLabels"`
 }
 
 func loadRealConfig() *TestConfig {
@@ -68,6 +73,10 @@ func TestGetNamespaces(t *testing.T) {
 		}
 		for _, namespace := range namespaces {
 			fmt.Printf("Namespaces: %s\n", namespace.Name)
+
+			if namespace.Name == *realConfig.Namespace {
+				fmt.Printf("Found Namespace: %s\n", namespace.Name)
+			}
 		}
 	})
 }
@@ -189,14 +198,15 @@ func TestListPods(t *testing.T) {
 			t.Errorf("%v", err)
 		}
 		api.Namespace = realConfig.Namespace
+		//api.Namespace = strPtr("")
 		ret, err := api.GetPods()
 		if err != nil {
 			t.Errorf("%v", err)
 		}
 		for _, obj := range ret {
 			fmt.Printf("Pod: %v\n", obj.Spec)
-
 		}
+
 	})
 }
 
@@ -410,7 +420,11 @@ func TestCreateDeployment(t *testing.T) {
 		}
 		api.Namespace = realConfig.Namespace
 
-		depF := &DeploymentFlat{AppName: strPtr("test"), Ports: []int32{8080}, Image: realConfig.Image, ImagePullSecretName: realConfig.ImagePullSecretName}
+		depF := &DeploymentFlat{AppName: strPtr("test"),
+			Ports:               []int32{8080},
+			Image:               realConfig.Image,
+			ImagePullSecretName: realConfig.ImagePullSecretName,
+			ServiceAccount:      strPtr(ServiceAccountName)}
 		err = api.CreateDeployment(depF)
 
 		if err != nil {
@@ -430,7 +444,11 @@ func TestUpdateDeployment(t *testing.T) {
 		}
 		api.Namespace = realConfig.Namespace
 
-		depF := &DeploymentFlat{AppName: strPtr("test"), Ports: []int32{8080}, Image: realConfig.Image, ImagePullSecretName: realConfig.ImagePullSecretName}
+		depF := &DeploymentFlat{AppName: strPtr("test"),
+			Ports:               []int32{8080},
+			Image:               realConfig.Image,
+			ImagePullSecretName: realConfig.ImagePullSecretName,
+			ServiceAccount:      strPtr(ServiceAccountName)}
 		err = api.UpdateDeployment(depF)
 
 		if err != nil {
@@ -469,8 +487,6 @@ func TestCreateIngress(t *testing.T) {
 	})
 }
 
-
-
 func TestUpdateIngress(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
@@ -498,5 +514,139 @@ func TestUpdateIngress(t *testing.T) {
 		if err != nil {
 			t.Errorf("%v", err)
 		}
+	})
+}
+
+func TestCreateServiceAccount(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		_ = realConfig
+
+		api, err := KubAPINew()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		api.Namespace = realConfig.Namespace
+
+		serviceAccountFlat := &ServiceAccountFlat{Name: strPtr(ServiceAccountName)}
+
+		err = api.CreateServiceAccount(serviceAccountFlat)
+
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestCreateRole(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		_ = realConfig
+
+		api, err := KubAPINew()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		api.Namespace = realConfig.Namespace
+		accessMAnager := AccessManager{KAPI: api}
+		roleFlat, err := accessMAnager.GenerateJobRunnerRole(strPtr(RoleName), realConfig.RunnableJobName)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		err = api.CreateRole(roleFlat)
+
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestCreateRoleBindings(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		_ = realConfig
+
+		api, err := KubAPINew()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		api.Namespace = realConfig.Namespace
+		//	Name               *string
+
+		roleBindingFlat := &RoleBindingFlat{Name: strPtr("job-creator-rolebinding"), ServiceAccountName: strPtr(ServiceAccountName), RoleName: strPtr(RoleName)}
+		err = api.CreateRoleBinding(roleBindingFlat)
+
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+func TestListDeployments(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		_ = realConfig
+
+		api, err := KubAPINew()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		//api.Namespace = realConfig.Namespace
+		api.Namespace = strPtr("")
+		ret, err := api.GetDeployments()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		for _, obj := range ret {
+			data, err := json.Marshal(obj)
+			if err != nil {
+				t.Errorf("%v", err)
+			}
+			if strings.Contains(string(data), "prod") {
+				fmt.Print("Found prod")
+			}
+			fmt.Printf("Deployment: %v\n", obj.Spec)
+		}
+
+	})
+}
+
+func TestCopySecret(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		_ = realConfig
+
+		api, err := KubAPINew()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		api.Namespace = realConfig.Namespace
+		srcSecretFlat := SecretFlat{Namespace: strPtr(""), Name: strPtr("")}
+		dstSecretFlat := SecretFlat{Namespace: realConfig.Namespace, Name: strPtr("test-secret")}
+		err = api.CopySecret(&srcSecretFlat, &dstSecretFlat)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+
+	})
+}
+
+func TestUpdateNamespace(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		_ = realConfig
+
+		api, err := KubAPINew()
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		api.Namespace = realConfig.Namespace
+		namespace := &NamespaceFlat{Name: realConfig.Namespace, Labels: realConfig.NamespaceLabels}
+		//namespace.Labels = map[string]string{"test": "test"}
+
+		err = api.UpdateNamespace(namespace, true)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+
 	})
 }

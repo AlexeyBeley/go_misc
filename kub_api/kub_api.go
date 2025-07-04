@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -44,6 +45,7 @@ type DeploymentFlat struct {
 	Image               *string
 	ImagePullSecretName *string
 	Ports               []int32
+	ServiceAccount      *string
 }
 
 func (depf *DeploymentFlat) GenerateRequest() (*appsv1.Deployment, error) {
@@ -92,12 +94,72 @@ func (depf *DeploymentFlat) GenerateRequest() (*appsv1.Deployment, error) {
 							Ports: containerPorts,
 						},
 					},
-					ImagePullSecrets: []corev1.LocalObjectReference{corev1.LocalObjectReference{Name: *depf.ImagePullSecretName}},
+					ImagePullSecrets:   []corev1.LocalObjectReference{corev1.LocalObjectReference{Name: *depf.ImagePullSecretName}},
+					ServiceAccountName: *depf.ServiceAccount,
 				},
 			},
 		},
 	}
 	return deployment, nil
+}
+
+type ServiceAccountFlat struct {
+	Name      *string
+	Namespace *string
+}
+
+func (serviceAccountFlat *ServiceAccountFlat) GenerateRequest() (*corev1.ServiceAccount, error) {
+
+	serviceAccount := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: *serviceAccountFlat.Name}}
+	return serviceAccount, nil
+}
+
+type RoleFlat struct {
+	Name      *string
+	Namespace *string
+	Rules     []rbacv1.PolicyRule
+}
+
+func (roleFlat *RoleFlat) GenerateRequest() (*rbacv1.Role, error) {
+
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: *roleFlat.Name,
+		},
+		Rules: roleFlat.Rules}
+
+	return role, nil
+}
+
+type RoleBindingFlat struct {
+	Name               *string
+	Namespace          *string
+	ServiceAccountName *string
+	RoleName           *string
+}
+
+func (roleBindingFlat *RoleBindingFlat) GenerateRequest() (*rbacv1.RoleBinding, error) {
+
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *roleBindingFlat.Name,
+			Namespace: *roleBindingFlat.Namespace,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      *roleBindingFlat.ServiceAccountName,
+				Namespace: *roleBindingFlat.Namespace,
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "Role",
+			Name:     *roleBindingFlat.RoleName,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+
+	return roleBinding, nil
 }
 
 type IngressFlat struct {
@@ -220,6 +282,57 @@ func (job *JobFlat) GenerateRequest() (ret *batchv1.Job, err error) {
 	return ret, nil
 }
 
+type SecretFlat struct {
+	Name        *string
+	Namespace   *string
+	Labels      map[string]string
+	Annotations map[string]string
+	Data        map[string][]byte
+	StringData  map[string]string
+	Type        *string
+}
+
+func (secretFlat *SecretFlat) GenerateRequest() (*corev1.Secret, error) {
+
+	newSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        *secretFlat.Name,       // Keep the same name
+			Namespace:   *secretFlat.Namespace,  // <--- Set the new namespace
+			Labels:      secretFlat.Labels,      // Copy existing labels
+			Annotations: secretFlat.Annotations, // Copy existing annotations (optional, consider filtering)
+		},
+		Type: corev1.SecretType(*secretFlat.Type), // Copy the secret type (e.g., Opaque, kubernetes.io/tls)
+	}
+
+	if secretFlat.StringData != nil {
+		(*newSecret).StringData = secretFlat.StringData // Copy StringData if present (mutually exclusive with Data for creation)
+	}
+	if secretFlat.Data != nil {
+		(*newSecret).Data = secretFlat.Data // Copy the actual secret data (base64 encoded bytes)
+	}
+	return newSecret, nil
+}
+
+type NamespaceFlat struct {
+	Name   *string
+	Labels map[string]string
+}
+
+func (namespaceFlat *NamespaceFlat) GenerateRequest() (*corev1.Namespace, error) {
+	namespace := &corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1", // Namespace is in the core API group, version v1
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   *namespaceFlat.Name,
+			Labels: namespaceFlat.Labels,
+		},
+	}
+
+	return namespace, nil
+}
+
 func KubAPINew() (*KubAPI, error) {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
@@ -260,6 +373,18 @@ func (kapi *KubAPI) GetPods() ([]corev1.Pod, error) {
 	}
 
 	return pods.Items, nil
+}
+
+func (kapi *KubAPI) GetDeployments() ([]appsv1.Deployment, error) {
+
+	// List pods in the specified namespace
+	deployments, err := kapi.clientset.AppsV1().Deployments(*kapi.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Printf("Error listing Deployments in namespace '%s': %v\n", *kapi.Namespace, err)
+		return nil, err
+	}
+
+	return deployments.Items, nil
 }
 
 func (kapi *KubAPI) GetNamespaces() ([]corev1.Namespace, error) {
@@ -482,19 +607,6 @@ func (kapi *KubAPI) GetIngresses() ([]networkingv1.Ingress, error) {
 	return ingressList.Items, nil
 }
 
-func (kapi *KubAPI) CreateServiceAccount(serviceAccount *corev1.ServiceAccount) error {
-	// List Services in the specified namespace
-
-	_, err := kapi.clientset.CoreV1().ServiceAccounts(*kapi.Namespace).Create(context.TODO(), serviceAccount, metav1.CreateOptions{})
-	if err != nil {
-		fmt.Printf("Error creating Service Account: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("Service Account created successfully")
-
-	return nil
-}
-
 func (kapi *KubAPI) ProvisionRole(role *rbacv1.Role) error {
 	// List Services in the specified namespace
 	// 2. Create a Role
@@ -545,7 +657,60 @@ func (kapi *KubAPI) ProvisionNamespace(name *string) error {
 		fmt.Printf("Created namespace: %s, %s\n", *name, namespace.UID)
 		return err
 	}
+	return nil
+}
 
+type JSONPatchOperation struct {
+	Op    string      `json:"op"`              // "remove", "add", "replace", "test", etc.
+	Path  string      `json:"path"`            // JSON Pointer (e.g., "/metadata/labels/my-label-key")
+	Value interface{} `json:"value,omitempty"` // Value for "add" or "replace" operations
+}
+
+func (kapi *KubAPI) UpdateNamespace(namespaceFlat *NamespaceFlat, declarative bool) error {
+	var patchBytes []byte
+	var requestType types.PatchType
+	var err error
+	patchOptions := metav1.PatchOptions{
+		FieldManager: *kapi.FieldManager, // <--- The name identifying your declarative client
+	}
+
+	if declarative {
+		// todo: Fix this!
+		request := []JSONPatchOperation{
+			{
+				Op:   "remove",                                   // The "remove" operation
+				Path: fmt.Sprintf("/metadata/labels/%s", "test"), // JSON Pointer to the specific label
+			},
+		}
+
+		patchBytes, err = json.Marshal(request)
+		if err != nil {
+			log.Fatalf("Error marshaling desired Namespace to JSON: %v", err)
+		}
+		requestType = types.JSONPatchType
+	} else {
+		request, err := namespaceFlat.GenerateRequest()
+		if err != nil {
+			return err
+		}
+		patchBytes, err = json.Marshal(request)
+		if err != nil {
+			log.Fatalf("Error marshaling desired Namespace to JSON: %v", err)
+		}
+		requestType = types.ApplyPatchType
+		patchOptions.Force = boolPtr(true) // <--- Set force to true for initial adoption or conflicts
+
+	}
+
+	log.Printf("DEBUG: Patch JSON: %s", string(patchBytes)) // For debugging the payload
+
+	namespace, err := kapi.clientset.CoreV1().Namespaces().Patch(context.TODO(), *namespaceFlat.Name, requestType, patchBytes,
+		patchOptions)
+
+	if err != nil {
+		fmt.Printf("Created namespace: %s, %s\n", *namespaceFlat.Name, namespace.UID)
+		return err
+	}
 	return nil
 }
 
@@ -703,5 +868,136 @@ func (kapi *KubAPI) UpdateIngress(ingressFlat *IngressFlat) error {
 	fmt.Printf("New Host: %s\n", updatedIngress.Spec.Rules[0].Host)
 	fmt.Printf("New Path: %s\n", updatedIngress.Spec.Rules[0].IngressRuleValue.HTTP.Paths[0].Path)
 	fmt.Printf("New proxy-read-timeout: %s\n", updatedIngress.ObjectMeta.Annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"])
+	return nil
+}
+
+func (kapi *KubAPI) CreateServiceAccount(serviceAccountFlat *ServiceAccountFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if serviceAccountFlat.Namespace == nil {
+		serviceAccountFlat.Namespace = namespace
+	}
+
+	serviceAccount, err := serviceAccountFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+
+	_, err = kapi.clientset.CoreV1().ServiceAccounts(*serviceAccountFlat.Namespace).Create(context.TODO(), serviceAccount, metav1.CreateOptions{})
+	if err != nil {
+		if os.IsExist(err) {
+			fmt.Println("ServiceAccount already exists.")
+		} else {
+			return fmt.Errorf("error creating ServiceAccount: %w", err)
+		}
+	} else {
+		fmt.Println("ServiceAccount created.")
+	}
+	return nil
+}
+
+func (kapi *KubAPI) CreateRole(roleFlat *RoleFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if roleFlat.Namespace == nil {
+		roleFlat.Namespace = namespace
+	}
+
+	role, err := roleFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+
+	_, err = kapi.clientset.RbacV1().Roles(*roleFlat.Namespace).Create(context.TODO(), role, metav1.CreateOptions{})
+	if err != nil {
+		if os.IsExist(err) {
+			fmt.Println("Role already exists.")
+		} else {
+			return fmt.Errorf("error creating Role: %w", err)
+		}
+	} else {
+		fmt.Println("Role created.")
+	}
+	return nil
+}
+
+func (kapi *KubAPI) CreateRoleBinding(roleBindingFlat *RoleBindingFlat) error {
+	namespace, err := kapi.GetActiveNamespace()
+	if err != nil {
+		return err
+	}
+
+	if roleBindingFlat.Namespace == nil {
+		roleBindingFlat.Namespace = namespace
+	}
+
+	role, err := roleBindingFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+
+	_, err = kapi.clientset.RbacV1().RoleBindings(*roleBindingFlat.Namespace).Create(context.TODO(), role, metav1.CreateOptions{})
+	if err != nil {
+		if os.IsExist(err) {
+			fmt.Println("RoleBinding already exists.")
+		} else {
+			return fmt.Errorf("error creating RoleBinding: %w", err)
+		}
+	} else {
+		fmt.Println("RoleBinding created.")
+	}
+	return nil
+}
+
+func (kapi *KubAPI) CopySecret(srcSecretFlat, dstSecretFlat *SecretFlat) error {
+
+	fmt.Printf("Attempting to copy Secret '%s' from namespace '%s' to '%s' in namespace %s...\n",
+		srcSecretFlat.Labels, *srcSecretFlat.Namespace, *dstSecretFlat.Name, *srcSecretFlat.Namespace)
+
+	// --- Step 1: Get the Secret from the source namespace ---
+	sourceSecret, err := kapi.clientset.CoreV1().Secrets(*srcSecretFlat.Namespace).Get(context.TODO(), *srcSecretFlat.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("error getting secret '%s' from namespace '%s': %v", *srcSecretFlat.Name, *srcSecretFlat.Namespace, err)
+	}
+	fmt.Printf("Successfully retrieved Secret '%s' from '%s'.\n", sourceSecret.Name, sourceSecret.Namespace)
+
+	// --- Step 2: Prepare the new Secret object for the destination namespace ---
+	// Create a new Secret object based on the retrieved one.
+	// IMPORTANT: Clear cluster-specific and read-only metadata fields.
+	if dstSecretFlat.Type == nil {
+		dstSecretFlat.Type = strPtr(string(sourceSecret.Type))
+	}
+	newSecretRequest, err := dstSecretFlat.GenerateRequest()
+	if err != nil {
+		return err
+	}
+	newSecretRequest.Data = sourceSecret.Data
+	newSecretRequest.StringData = sourceSecret.StringData
+	newSecretRequest.Type = sourceSecret.Type
+
+	// If you want to remove specific annotations/labels that are source-namespace specific,
+	// you would do it here. E.g., delete "meta.helm.sh/release-namespace" if copying a Helm-managed secret.
+	// delete(newSecret.ObjectMeta.Annotations, "meta.helm.sh/release-namespace")
+
+	// --- Step 3: Create the new Secret in the destination namespace ---
+	fmt.Printf("Creating Secret '%s' in destination namespace '%s'...\n", newSecretRequest.Name, newSecretRequest.Namespace)
+	createdSecret, err := kapi.clientset.CoreV1().Secrets(newSecretRequest.Namespace).Create(context.TODO(), newSecretRequest, metav1.CreateOptions{})
+	if err != nil {
+		if os.IsExist(err) {
+			log.Printf("Secret '%s' already exists in namespace '%s'. Use kubectl delete to remove it first if you want to overwrite.", newSecretRequest.Name, newSecretRequest.Namespace)
+			return fmt.Errorf("secret creation failed: Secret already exists")
+		} else {
+			return fmt.Errorf("error creating secret '%s' in namespace '%s': %v", newSecretRequest.Name, newSecretRequest.Namespace, err)
+		}
+	}
+
+	fmt.Printf("Successfully copied Secret '%s' to namespace '%s'.\n", createdSecret.Name, createdSecret.Namespace)
+	fmt.Println("You can verify with: kubectl get secret", createdSecret.Name, "-n", createdSecret.Namespace, "-o yaml")
 	return nil
 }

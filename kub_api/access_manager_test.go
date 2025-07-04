@@ -30,8 +30,8 @@ func TestGenerateJobRunnerRole(t *testing.T) {
 		if err != nil {
 			t.Errorf("%v", err)
 		}
-		err = api.ProvisionRole(role)
-		if err != nil {
+
+		if role == nil {
 			t.Errorf("%v", err)
 		}
 	})

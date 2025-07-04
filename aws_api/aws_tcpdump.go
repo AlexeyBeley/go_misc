@@ -7,10 +7,11 @@ import (
 	"math"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/AlexeyBeley/go_common/logger"
@@ -22,51 +23,81 @@ import (
 )
 
 type AWSTCPDumpConfig struct {
-	Region            string
-	Subnets           []string
-	OutputFilePath    string
-	LogOutputFilePath string
-	IamDataDirPath    string
-	AWSProfile        string
+	Region                   string
+	Subnets                  []string
+	InterfacesOutputFilePath string
+	LogOutputFilePath        string
+	IamDataDirPath           string
+	AWSProfile               string
 }
 
-var DebugLogger = &(logger.Logger{})
+type AWSTCPDump struct {
+	Config               *AWSTCPDumpConfig
+	KnownIntefaces       []*ec2.NetworkInterface
+	Done                 bool
+	JsonLogger           *logger.Logger
+	LiveRecording        bool
+	FlowLogEventsHandler func(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error
+}
 
-func AWSTCPDumpStart(configFilePath string) error {
-
-	workPool := make(chan bool, 5)
-
+func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
+	new := &AWSTCPDump{}
 	config := AWSTCPDumpConfig{}
 
 	jsonString, err := os.ReadFile(configFilePath)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-
 	err = json.Unmarshal([]byte(jsonString), &config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if _, err := os.Stat(config.OutputFilePath); err == nil {
-		os.Truncate(config.OutputFilePath, 0)
+	new.Config = &config
+	new.Done = false
+	new.LiveRecording = true
+	//new.FlowLogEventsHandler = new.FlowLogEventsBytesSummarizerHandler
+	new.FlowLogEventsHandler = new.FlowLogEventsEchoHandler
+
+	if _, err := os.Stat(config.InterfacesOutputFilePath); err == nil {
+		os.Truncate(config.InterfacesOutputFilePath, 0)
 	} else if !os.IsNotExist(err) {
-		fmt.Printf("Error checking file  '%s': %v\n", config.OutputFilePath, err)
+		fmt.Printf("Error checking file  '%s': %v\n", config.InterfacesOutputFilePath, err)
 	}
-	lg.FileDst = config.OutputFilePath
-	DebugLogger.FileDst = config.LogOutputFilePath
-	subnetLogGroupNames, err := provisionSubnetsFlowLogGroups(&config)
+	lg.FileDst = config.LogOutputFilePath
+
+	new.JsonLogger = &(logger.Logger{FileDst: config.InterfacesOutputFilePath})
+
+	return new, nil
+}
+
+func (awsTCPDump *AWSTCPDump) Start() error {
+	workPool := make(chan bool, 5)
+
+	subnetLogGroupNames, err := provisionSubnetsFlowLogGroups(awsTCPDump.Config)
 	if err != nil {
 		return err
 	}
 
-	for _, subnetId := range config.Subnets {
-		go StartSubnetRecording(&config, &workPool, subnetId, subnetLogGroupNames[subnetId])
+	for _, subnetId := range awsTCPDump.Config.Subnets {
+		go awsTCPDump.StartSubnetInterfacesRecording(&workPool, subnetId, subnetLogGroupNames[subnetId])
 	}
 
-	for {
-		time.Sleep(60 * time.Second)
-	}
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	sig := <-sigChan
+	fmt.Printf("\nReceived OS signal: %s. Initiating graceful shutdown...\n", sig)
+
+	// Signal the main logic goroutine to stop.
+	awsTCPDump.Done = true
+
+	// Give some time for cleanup or final tasks.
+	fmt.Println("Performing final cleanup (e.g., closing connections, saving state)...")
+	time.Sleep(2 * time.Second) // Simulate cleanup time
+
+	fmt.Println("Program gracefully stopped.")
+	return nil
 
 }
 
@@ -159,7 +190,7 @@ func provisionSubnetLogGroup(config *AWSTCPDumpConfig, subnetId *string) (logGro
 		if err != nil {
 			panic(err)
 		}
-		DebugLogger.InfoF("Provision Log group response: %v", output)
+		lg.InfoF("Provision Log group response: %v", output)
 	}
 
 	return logGroupName
@@ -179,7 +210,7 @@ type interfaceDataCollector struct {
 }
 
 // Summarize the sent and received traffic into data collector.
-func BytesSummarizer(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error {
+func (awsTCPDump *AWSTCPDump) FlowLogEventsBytesSummarizerHandler(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error {
 	return func(event *cloudwatchlogs.OutputLogEvent) error {
 		dataCollectorPrev := *dataCollector
 		if strings.Contains(*event.Message, "NODATA") {
@@ -236,7 +267,7 @@ func BytesSummarizer(dataCollector *interfaceDataCollector) func(*cloudwatchlogs
 		}
 
 		if dataCollectorPrev != *dataCollector {
-			DebugLogger.InfoF("NetworkInterfaceId %s TotalBytesIn: %d, TotalDurationIn: %d", *dataCollector.NetworkInterfaceId, dataCollector.TotalBytesIn, dataCollector.TotaldurationSecondsIn)
+			lg.InfoF("NetworkInterfaceId %s TotalBytesIn: %d, TotalDurationIn: %d", *dataCollector.NetworkInterfaceId, dataCollector.TotalBytesIn, dataCollector.TotaldurationSecondsIn)
 			output := map[string]any{"NetworkInterfaceId": *dataCollector.NetworkInterfaceId,
 				"MinMinuteBytesIn":        dataCollector.MinMinuteBytesIn,
 				"MaxMinuteBytesIn":        dataCollector.MaxMinuteBytesIn,
@@ -247,49 +278,169 @@ func BytesSummarizer(dataCollector *interfaceDataCollector) func(*cloudwatchlogs
 				"TotalBytesOut":           dataCollector.TotalBytesOut,
 				"TotaldurationSecondsOut": dataCollector.TotaldurationSecondsOut,
 			}
-			lg.InfoM(output)
+			awsTCPDump.JsonLogger.InfoM(output)
 		}
 
 		return nil
 	}
 }
 
-func StartSubnetRecording(config *AWSTCPDumpConfig, workPool *chan bool, subnetId string, subnetLogGroupName string) error {
-	networkInterfaces := make(map[string]context.CancelFunc)
-	for {
-		interfaces := GetSubnetInterfacesFromAPI(config, subnetId)
-		interfaceIds := []string{}
-
-		for _, ec2Interface := range interfaces {
-			interId := ec2Interface.NetworkInterfaceId
-			interfaceIds = append(interfaceIds, *interId)
-			if _, ok := networkInterfaces[*interId]; !ok {
-				sgroups := ""
-				for _, group := range (*ec2Interface).Groups {
-					sgroups += ", " + *group.GroupName
-				}
-
-				DebugLogger.InfoF("InterfaceID: %s, Description: %s, sec groups: [%s]", *interId, *ec2Interface.Description, sgroups)
-				ctx, cancel := context.WithCancel(context.Background())
-				networkInterfaces[*interId] = cancel
-				go StartInterfaceRecording(workPool, *interId, subnetId, subnetLogGroupName, config.Region, &ctx)
-			}
+// Summarize the sent and received traffic into data collector.
+func (awsTCPDump *AWSTCPDump) FlowLogEventsEchoHandler(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error {
+	return func(event *cloudwatchlogs.OutputLogEvent) error {
+		dataCollectorPrev := *dataCollector
+		if strings.Contains(*event.Message, "NODATA") {
+			return nil
+		}
+		//fmt.Println("  ", *event.Message)
+		stringSplit := strings.Split(*event.Message, " ")
+		srcaddr := stringSplit[3]
+		dstaddr := stringSplit[4]
+		ipSrc := net.ParseIP(srcaddr)
+		ipDst := net.ParseIP(dstaddr)
+		if ipSrc == nil || ipDst == nil {
+			return fmt.Errorf("srcaddr: %v, dstaddr: %v ", srcaddr, dstaddr)
 		}
 
-		for interId := range networkInterfaces {
-			if !slices.Contains(interfaceIds, interId) {
-				StopInterfaceRecording(interId, networkInterfaces)
-			}
+		if ipSrc.IsPrivate() && ipDst.IsPrivate() {
+			return nil
 		}
-		DebugLogger.InfoF("subnet %s recording %d interfaces", subnetId, len(networkInterfaces))
-		time.Sleep(30 * time.Second)
+		if !ipSrc.IsPrivate() && !ipDst.IsPrivate() {
+			return fmt.Errorf("public to public not supported yet: %s", *event.Message)
+		}
+
+		bytes, err := strconv.Atoi(stringSplit[9])
+		if err != nil {
+			return err
+		}
+
+		secondsStart, err := strconv.Atoi(stringSplit[10])
+		if err != nil {
+			return err
+		}
+
+		secondsEnd, err := strconv.Atoi(stringSplit[11])
+		if err != nil {
+			return err
+		}
+		secondsDuration := uint64(secondsEnd) - uint64(secondsStart)
+		if secondsDuration == 0 {
+			secondsDuration = 1
+		}
+		minuteBytes := uint64(bytes*60) / secondsDuration
+
+		if ipSrc.IsPrivate() {
+			dataCollector.MaxMinuteBytesOut = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesOut)
+			dataCollector.MinMinuteBytesOut = min(uint64(minuteBytes), dataCollector.MinMinuteBytesOut)
+			dataCollector.TotalBytesOut += uint64(bytes)
+			dataCollector.TotaldurationSecondsOut += secondsDuration
+
+		} else {
+			dataCollector.MaxMinuteBytesIn = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesIn)
+			dataCollector.MinMinuteBytesIn = min(uint64(minuteBytes), dataCollector.MinMinuteBytesIn)
+			dataCollector.TotalBytesIn += uint64(bytes)
+			dataCollector.TotaldurationSecondsIn += secondsDuration
+		}
+
+		if dataCollectorPrev != *dataCollector {
+			lg.InfoF("NetworkInterfaceId %s TotalBytesIn: %d, TotalDurationIn: %d", *dataCollector.NetworkInterfaceId, dataCollector.TotalBytesIn, dataCollector.TotaldurationSecondsIn)
+			output := map[string]any{"NetworkInterfaceId": *dataCollector.NetworkInterfaceId,
+				"MinMinuteBytesIn":        dataCollector.MinMinuteBytesIn,
+				"MaxMinuteBytesIn":        dataCollector.MaxMinuteBytesIn,
+				"TotalBytesIn":            dataCollector.TotalBytesIn,
+				"TotaldurationSecondsIn":  dataCollector.TotaldurationSecondsIn,
+				"MinMinuteBytesOut":       dataCollector.MinMinuteBytesOut,
+				"MaxMinuteBytesOut":       dataCollector.MaxMinuteBytesOut,
+				"TotalBytesOut":           dataCollector.TotalBytesOut,
+				"TotaldurationSecondsOut": dataCollector.TotaldurationSecondsOut,
+			}
+			awsTCPDump.JsonLogger.InfoM(output)
+		}
+
+		return nil
 	}
-
 }
 
-func GetSubnetInterfacesFromAPI(config *AWSTCPDumpConfig, subnetId string) []*ec2.NetworkInterface {
+func (awsTCPDump *AWSTCPDump) GetInterfaceChanges(config *AWSTCPDumpConfig, KnownNetworkInterfaces *map[string]context.CancelFunc, subnetId string) ([]string, []string, error) {
+	retAdd := []string{}
+	retDel := []string{}
+	fetchedIds := map[string]bool{}
 
-	api := clients.EC2APINew(&config.Region, &config.AWSProfile)
+	fetchedInterfaces := awsTCPDump.GetSubnetInterfacesFromAPI(subnetId)
+
+	for _, ec2Interface := range fetchedInterfaces {
+		fetchedIds[*ec2Interface.NetworkInterfaceId] = true
+
+		if _, ok := (*KnownNetworkInterfaces)[*ec2Interface.NetworkInterfaceId]; !ok {
+			retAdd = append(retAdd, *ec2Interface.NetworkInterfaceId)
+			// 1. Marshal the struct to JSON bytes
+			jsonBytes, err := json.Marshal(ec2Interface)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error marshaling NetworkInterface to JSON: %v", err)
+			}
+
+			// 2. Unmarshal the JSON bytes into a map[string]interface{}
+			var niMap map[string]interface{}
+			err = json.Unmarshal(jsonBytes, &niMap)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error unmarshaling JSON to map: %v", err)
+
+			}
+			awsTCPDump.JsonLogger.InfoM(niMap)
+		}
+	}
+
+	for ec2InterfaceId := range *KnownNetworkInterfaces {
+		if _, ok := fetchedIds[ec2InterfaceId]; !ok {
+			retDel = append(retDel, ec2InterfaceId)
+		}
+	}
+
+	return retAdd, retDel, nil
+}
+
+func (awsTCPDump *AWSTCPDump) StartSubnetInterfacesRecording(workPool *chan bool, subnetId string, subnetLogGroupName string) error {
+	networkInterfaces := make(map[string]context.CancelFunc)
+	for {
+		interfacesAdded, InterfacesDeprecated, err := awsTCPDump.GetInterfaceChanges(awsTCPDump.Config, &networkInterfaces, subnetId)
+		lg.InfoF("Subnet %s Added intefaces: %d Deprecated interfaces: %d ", subnetId, len(interfacesAdded), len(InterfacesDeprecated))
+		if err != nil {
+			return err
+		}
+
+		if awsTCPDump.LiveRecording {
+			for _, ec2InterfaceId := range interfacesAdded {
+
+				ctx, cancel := context.WithCancel(context.Background())
+				networkInterfaces[ec2InterfaceId] = cancel
+				go awsTCPDump.StartInterfaceRecording(workPool, ec2InterfaceId, subnetId, subnetLogGroupName, &ctx)
+
+			}
+
+			for _, ec2InterfaceId := range InterfacesDeprecated {
+				awsTCPDump.StopInterfaceRecording(ec2InterfaceId, &networkInterfaces)
+			}
+		} else {
+			for _, ec2InterfaceId := range interfacesAdded {
+				networkInterfaces[ec2InterfaceId] = nil
+			}
+			for _, interId := range InterfacesDeprecated {
+				delete(networkInterfaces, interId)
+			}
+		}
+
+		lg.InfoF("Subnet %s Current: %d interfaces", subnetId, len(networkInterfaces))
+
+		if awsTCPDump.Done {
+			return nil
+		}
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func (awsTCPDump *AWSTCPDump) GetSubnetInterfacesFromAPI(subnetId string) []*ec2.NetworkInterface {
+
+	api := clients.EC2APINew(&awsTCPDump.Config.Region, &awsTCPDump.Config.AWSProfile)
 	Filters := []*ec2.Filter{{
 		Name:   aws.String("subnet-id"), // Filter by resource ID
 		Values: []*string{&subnetId},
@@ -299,7 +450,7 @@ func GetSubnetInterfacesFromAPI(config *AWSTCPDumpConfig, subnetId string) []*ec
 	objects := make([]any, 0)
 	err := api.GetNetworkInterfaces(clients.AggregatorInitializer(&objects), &describeNetworkInterfacesInput)
 	if err != nil {
-		DebugLogger.InfoF("call GetSubnetInterfaceIds(%s, %s)->DescribeNetworkInterfaces %v", config.Region, subnetId, err)
+		lg.InfoF("call GetSubnetInterfaceIds(%s, %s)->DescribeNetworkInterfaces %v", awsTCPDump.Config.Region, subnetId, err)
 	}
 	ret := []*ec2.NetworkInterface{}
 	for _, anyObject := range objects {
@@ -329,8 +480,8 @@ func PrintInterfaceDescription(config *AWSTCPDumpConfig, interfaceId *string) er
 
 // Log stream per inteface with interface id in the name.
 // ${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}
-func StartInterfaceRecording(workPool *chan bool, interId, subnetId, subnetLogGroupName, region string, ctx *context.Context) error {
-	svc := clients.GetCloudwatchLogClient(&region)
+func (awsTCPDump *AWSTCPDump) StartInterfaceRecording(workPool *chan bool, interId, subnetId, subnetLogGroupName string, ctx *context.Context) error {
+	svc := clients.GetCloudwatchLogClient(&awsTCPDump.Config.Region)
 	limit := int64(50)
 	objects := make([]any, 0)
 	err := clients.GetLogStreamsRaw(svc, &limit, &subnetLogGroupName, &interId, clients.AggregatorInitializer(&objects))
@@ -360,11 +511,11 @@ func StartInterfaceRecording(workPool *chan bool, interId, subnetId, subnetLogGr
 			pEpochStartMiliSeconds = nil
 		}
 		*workPool <- true
-		lastResp, err := clients.YieldCloudwatchLogStream(&region, &subnetLogGroupName, stream.LogStreamName, nextToken, pEpochStartMiliSeconds, nil, BytesSummarizer(&dataCollector))
+		lastResp, err := clients.YieldCloudwatchLogStream(&awsTCPDump.Config.Region, &subnetLogGroupName, stream.LogStreamName, nextToken, pEpochStartMiliSeconds, nil, awsTCPDump.FlowLogEventsHandler(&dataCollector))
 		<-*workPool
 
 		if err != nil {
-			DebugLogger.InfoF("call StartInterfaceRecording(%s, %s)->YieldCloudwatchLogStream %v", region, subnetLogGroupName, err)
+			lg.InfoF("call StartInterfaceRecording(%s, %s)->YieldCloudwatchLogStream %v", awsTCPDump.Config.Region, subnetLogGroupName, err)
 			time.Sleep(5 * time.Second)
 		}
 
@@ -374,7 +525,7 @@ func StartInterfaceRecording(workPool *chan bool, interId, subnetId, subnetLogGr
 
 		select {
 		case <-(*ctx).Done():
-			DebugLogger.InfoF("stopped interface recording: %s", interId)
+			lg.InfoF("stopped interface recording: %s", interId)
 			return nil
 		default:
 			time.Sleep(5 * time.Second)
@@ -382,18 +533,18 @@ func StartInterfaceRecording(workPool *chan bool, interId, subnetId, subnetLogGr
 	}
 }
 
-func StopInterfaceRecording(interId string, networkInterfaces map[string]context.CancelFunc) {
-	DebugLogger.InfoF("stopping interface recording using context: %s", interId)
-	networkInterfaces[interId]()
+func (awsTCPDump *AWSTCPDump) StopInterfaceRecording(interId string, networkInterfaces *map[string]context.CancelFunc) {
+	lg.InfoF("stopping interface recording using context: %s", interId)
+	(*networkInterfaces)[interId]()
 	time.Sleep(15 * time.Second)
-	delete(networkInterfaces, interId)
+	delete(*networkInterfaces, interId)
 }
 
 func AWSTCPDumpAnalize(filePath string) (string, error) {
 	ret := ""
 	if _, err := os.Stat(filePath); err != nil {
 		if !os.IsNotExist(err) {
-			return ret, fmt.Errorf("error checking file  '%s': %v\n", filePath, err)
+			return ret, fmt.Errorf("error checking file  '%s': %v", filePath, err)
 		}
 		return ret, nil
 	}
@@ -434,7 +585,7 @@ func AWSTCPDumpAnalize(filePath string) (string, error) {
 	}
 
 	if maxInInterface.NetworkInterfaceId != nil {
-		DebugLogger.InfoF("Max In:  %v: %d , Max Out: %v: %d", *maxInInterface.NetworkInterfaceId, maxInBytes, *maxOutInterface.NetworkInterfaceId, maxOutBytes)
+		lg.InfoF("Max In:  %v: %d , Max Out: %v: %d", *maxInInterface.NetworkInterfaceId, maxInBytes, *maxOutInterface.NetworkInterfaceId, maxOutBytes)
 	}
 	return ret, nil
 }

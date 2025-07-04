@@ -6,6 +6,7 @@ import (
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -475,4 +476,51 @@ func AddTagsS3Buckets(config ModifyTagsConfig) error {
 
 	}
 	return nil
+}
+
+func AnyToStrings(src []any) (dst []*string, err error) {
+	for _, srcObj := range src {
+		dstObj := srcObj.(*string)
+		dst = append(dst, dstObj)
+	}
+	return dst, err
+}
+
+func HandleTaskDefinition(anyObject any) error {
+	obj, ok := anyObject.(*ecs.TaskDefinition)
+	if !ok {
+		panic(anyObject)
+	}
+
+	lg.InfoF("Tod: %v", obj)
+	return nil
+}
+
+func CheckTagsECSTaskDefinitions(config ModifyTagsConfig) error {
+	api := clients.ECSAPINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.GetTaskDefinitionFamilies(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
+
+	families, err := AnyToStrings(objects)
+	if err != nil {
+		return err
+	}
+
+	for _, familyName := range families {
+		objects = objects[:0]
+		api.GetTaskDefinitions(clients.AggregatorInitializer(&objects), &ecs.ListTaskDefinitionsInput{FamilyPrefix: familyName, MaxResults: int64Ptr(int64(1)), Sort: strPtr("DESC")})
+		lg.InfoF("Fetched %d task definitions family: %s", len(objects), *familyName)
+	}
+	return nil
+}
+
+func int64Ptr(i int64) *int64 {
+	return &i
+}
+
+func strPtr(src string) *string {
+	return &src
 }

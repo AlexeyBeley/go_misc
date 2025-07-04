@@ -133,7 +133,7 @@ func TestDescribeVpcEndpointsPages(t *testing.T) {
 		api := EC2APINew(&realConfig.Region, &realConfig.ProfileName)
 
 		objects := make([]any, 0)
-		err := api.DescribeVpcEndpointsPages(Echo(), nil)
+		err := api.DescribeVpcEndpointsPages(Echo, nil)
 		if err != nil {
 			t.Errorf("%v", err)
 		}

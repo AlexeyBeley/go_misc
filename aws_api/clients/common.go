@@ -24,11 +24,10 @@ func Counter() func(any) error {
 	}
 }
 
-func Echo() func(any) error {
-	return func(Something any) error {
+
+func Echo(Something any) error {
 		fmt.Printf("raw AWS API response: %v\n", Something)
 		return nil
 	}
-}
 
 var lg = &(logger.Logger{})

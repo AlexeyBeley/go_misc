@@ -10,27 +10,27 @@ type AccessManager struct {
 	KAPI *KubAPI
 }
 
-func (accessManager *AccessManager) GenerateJobRunnerRole(RoleName, JobName *string) (*rbacv1.Role, error) {
-	roleP := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      *RoleName,
-			Namespace: *accessManager.KAPI.Namespace,
+func (accessManager *AccessManager) GenerateJobRunnerRole(RoleName, JobName *string) (*RoleFlat, error) {
+	roleFlat := &RoleFlat{Name: RoleName}
+
+	roleFlat.Rules = []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{"batch"},
+			Resources: []string{"jobs"},
+			Verbs:     []string{"create"},
 		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups:     []string{"batch"},
-				Resources:     []string{"jobs"},
-				Verbs:         []string{"create"},
-				ResourceNames: []string{*JobName}, // Limit to the specific Job name
-			},
-			{
-				APIGroups: []string{""}, // Core API group
-				Resources: []string{"pods"},
-				Verbs:     []string{"get", "list"}, // Needed for Job controller
-			},
+		{
+			APIGroups: []string{""}, // Core API group
+			Resources: []string{"pods"},
+			Verbs:     []string{"get", "list"}, // Needed for Job controller
 		},
 	}
-	return roleP, nil
+
+	if JobName != nil {
+		roleFlat.Rules[0].ResourceNames = []string{*JobName}
+	}
+
+	return roleFlat, nil
 }
 
 func (accessManager *AccessManager) GenerateJobRunnerServiceAccount(Name *string) (*corev1.ServiceAccount, error) {
