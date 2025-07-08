@@ -2,13 +2,13 @@
 SHELL := /bin/bash
 
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-BUILD_DIR:= ${ROOT_DIR}/build
-BUILD_TMP_DIR:= ${BUILD_DIR}/_build
+BUILD_DIR:= ${ROOT_DIR}/_build
+GOENVPATH:=$(go env GOPATH)
 
 APP_NAME := aws_api
 APP_BUILD_DIR:=${BUILD_TMP_DIR}/${APP_NAME}
 
-GOENVPATH:=$(go env GOPATH)
+
 
 install-golang:
 	wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz &&\

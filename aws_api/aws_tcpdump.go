@@ -3,6 +3,7 @@ package aws_api
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -29,6 +30,7 @@ type AWSTCPDumpConfig struct {
 	IamDataDirPath           string
 	AWSProfile               string
 	ProcessedOutputFilePath  string
+	LiveRecording            bool
 }
 
 type AWSTCPDump struct {
@@ -36,13 +38,14 @@ type AWSTCPDump struct {
 	KnownIntefaces []*ec2.NetworkInterface
 	Done           bool
 	JsonLogger     *logger.Logger
-	LiveRecording  bool
 	EventsFilter   func(*FlowLogEvent) (*FlowLogEvent, error)
 	EventProcessor func(*FlowLogEvent) error
 }
 
 func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
+
 	new := &AWSTCPDump{}
+	new.initConfig()
 	config := AWSTCPDumpConfig{}
 
 	jsonString, err := os.ReadFile(configFilePath)
@@ -56,7 +59,7 @@ func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
 
 	new.Config = &config
 	new.Done = false
-	new.LiveRecording = true
+	new.Config.LiveRecording = true
 
 	if new.Config.ProcessedOutputFilePath == "" {
 		new.Config.ProcessedOutputFilePath = "/tmp/aws_tcpdump_processed.json"
@@ -79,6 +82,45 @@ func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
 	new.JsonLogger = &(logger.Logger{FileDst: config.InterfacesOutputFilePath, AddDateTime: true})
 
 	return new, nil
+}
+
+func (AwsTCPDump *AWSTCPDump) ParseArgs(flagset *flag.FlagSet, args []string) (*AWSTCPDumpConfig, error) {
+	region := flagset.String("region", "", "AWS Region")
+	subnetsString := flagset.String("subnets", "", "AWS Subnets to listen too")
+	profile := flagset.String("profile", "default", "AWS profile")
+	live := flagset.Bool("live", false, "Live traffic recording")
+
+	err := flagset.Parse(args)
+	if err != nil {
+		return nil, err
+	}
+
+	var subnetsSlice []string
+	if *subnetsString == "" {
+		subnetsSlice = []string{}
+	} else {
+		subnetsSlice = strings.Split(*subnetsString, ",")
+	}
+
+	ret := &AWSTCPDumpConfig{Region: *region, Subnets: subnetsSlice, AWSProfile: *profile, LiveRecording: *live}
+	return ret, nil
+}
+
+func (AwsTCPDump *AWSTCPDump) initConfig() error {
+
+	//InterfacesOutputFilePath
+	//LogOutputFilePath
+	//IamDataDirPath
+	//ProcessedOutputFilePath
+	//
+
+	flagset := &flag.FlagSet{}
+	config, err := AwsTCPDump.ParseArgs(flagset, os.Args)
+	if err != nil {
+		return err
+	}
+	AwsTCPDump.Config = config
+	return nil
 }
 
 func (awsTCPDump *AWSTCPDump) Start() error {
@@ -253,7 +295,7 @@ func (awsTCPDump *AWSTCPDump) StartSubnetInterfacesRecording(workPool *chan bool
 			return err
 		}
 
-		if awsTCPDump.LiveRecording {
+		if awsTCPDump.Config.LiveRecording {
 			for _, ec2InterfaceId := range interfacesAdded {
 
 				ctx, cancel := context.WithCancel(context.Background())
