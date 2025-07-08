@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -29,15 +28,17 @@ type AWSTCPDumpConfig struct {
 	LogOutputFilePath        string
 	IamDataDirPath           string
 	AWSProfile               string
+	ProcessedOutputFilePath  string
 }
 
 type AWSTCPDump struct {
-	Config               *AWSTCPDumpConfig
-	KnownIntefaces       []*ec2.NetworkInterface
-	Done                 bool
-	JsonLogger           *logger.Logger
-	LiveRecording        bool
-	FlowLogEventsHandler func(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error
+	Config         *AWSTCPDumpConfig
+	KnownIntefaces []*ec2.NetworkInterface
+	Done           bool
+	JsonLogger     *logger.Logger
+	LiveRecording  bool
+	EventsFilter   func(*FlowLogEvent) (*FlowLogEvent, error)
+	EventProcessor func(*FlowLogEvent) error
 }
 
 func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
@@ -56,17 +57,26 @@ func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
 	new.Config = &config
 	new.Done = false
 	new.LiveRecording = true
-	//new.FlowLogEventsHandler = new.FlowLogEventsBytesSummarizerHandler
-	new.FlowLogEventsHandler = new.FlowLogEventsEchoHandler
+
+	if new.Config.ProcessedOutputFilePath == "" {
+		new.Config.ProcessedOutputFilePath = "/tmp/aws_tcpdump_processed.json"
+		if _, err := os.Stat(new.Config.ProcessedOutputFilePath); err == nil {
+			os.Truncate(new.Config.ProcessedOutputFilePath, 0)
+		}
+	}
 
 	if _, err := os.Stat(config.InterfacesOutputFilePath); err == nil {
 		os.Truncate(config.InterfacesOutputFilePath, 0)
 	} else if !os.IsNotExist(err) {
 		fmt.Printf("Error checking file  '%s': %v\n", config.InterfacesOutputFilePath, err)
 	}
-	lg.FileDst = config.LogOutputFilePath
 
-	new.JsonLogger = &(logger.Logger{FileDst: config.InterfacesOutputFilePath})
+	lg.FileDst = config.LogOutputFilePath
+	if _, err := os.Stat(config.LogOutputFilePath); err == nil {
+		os.Truncate(config.LogOutputFilePath, 0)
+	}
+
+	new.JsonLogger = &(logger.Logger{FileDst: config.InterfacesOutputFilePath, AddDateTime: true})
 
 	return new, nil
 }
@@ -194,171 +204,6 @@ func provisionSubnetLogGroup(config *AWSTCPDumpConfig, subnetId *string) (logGro
 	}
 
 	return logGroupName
-}
-
-type interfaceDataCollector struct {
-	NetworkInterfaceId     *string
-	MaxMinuteBytesIn       uint64
-	MinMinuteBytesIn       uint64
-	TotalBytesIn           uint64
-	TotaldurationSecondsIn uint64
-
-	MaxMinuteBytesOut       uint64
-	MinMinuteBytesOut       uint64
-	TotalBytesOut           uint64
-	TotaldurationSecondsOut uint64
-}
-
-// Summarize the sent and received traffic into data collector.
-func (awsTCPDump *AWSTCPDump) FlowLogEventsBytesSummarizerHandler(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error {
-	return func(event *cloudwatchlogs.OutputLogEvent) error {
-		dataCollectorPrev := *dataCollector
-		if strings.Contains(*event.Message, "NODATA") {
-			return nil
-		}
-		//fmt.Println("  ", *event.Message)
-		stringSplit := strings.Split(*event.Message, " ")
-		srcaddr := stringSplit[3]
-		dstaddr := stringSplit[4]
-		ipSrc := net.ParseIP(srcaddr)
-		ipDst := net.ParseIP(dstaddr)
-		if ipSrc == nil || ipDst == nil {
-			return fmt.Errorf("srcaddr: %v, dstaddr: %v ", srcaddr, dstaddr)
-		}
-
-		if ipSrc.IsPrivate() && ipDst.IsPrivate() {
-			return nil
-		}
-		if !ipSrc.IsPrivate() && !ipDst.IsPrivate() {
-			return fmt.Errorf("public to public not supported yet: %s", *event.Message)
-		}
-
-		bytes, err := strconv.Atoi(stringSplit[9])
-		if err != nil {
-			return err
-		}
-
-		secondsStart, err := strconv.Atoi(stringSplit[10])
-		if err != nil {
-			return err
-		}
-
-		secondsEnd, err := strconv.Atoi(stringSplit[11])
-		if err != nil {
-			return err
-		}
-		secondsDuration := uint64(secondsEnd) - uint64(secondsStart)
-		if secondsDuration == 0 {
-			secondsDuration = 1
-		}
-		minuteBytes := uint64(bytes*60) / secondsDuration
-
-		if ipSrc.IsPrivate() {
-			dataCollector.MaxMinuteBytesOut = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesOut)
-			dataCollector.MinMinuteBytesOut = min(uint64(minuteBytes), dataCollector.MinMinuteBytesOut)
-			dataCollector.TotalBytesOut += uint64(bytes)
-			dataCollector.TotaldurationSecondsOut += secondsDuration
-
-		} else {
-			dataCollector.MaxMinuteBytesIn = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesIn)
-			dataCollector.MinMinuteBytesIn = min(uint64(minuteBytes), dataCollector.MinMinuteBytesIn)
-			dataCollector.TotalBytesIn += uint64(bytes)
-			dataCollector.TotaldurationSecondsIn += secondsDuration
-		}
-
-		if dataCollectorPrev != *dataCollector {
-			lg.InfoF("NetworkInterfaceId %s TotalBytesIn: %d, TotalDurationIn: %d", *dataCollector.NetworkInterfaceId, dataCollector.TotalBytesIn, dataCollector.TotaldurationSecondsIn)
-			output := map[string]any{"NetworkInterfaceId": *dataCollector.NetworkInterfaceId,
-				"MinMinuteBytesIn":        dataCollector.MinMinuteBytesIn,
-				"MaxMinuteBytesIn":        dataCollector.MaxMinuteBytesIn,
-				"TotalBytesIn":            dataCollector.TotalBytesIn,
-				"TotaldurationSecondsIn":  dataCollector.TotaldurationSecondsIn,
-				"MinMinuteBytesOut":       dataCollector.MinMinuteBytesOut,
-				"MaxMinuteBytesOut":       dataCollector.MaxMinuteBytesOut,
-				"TotalBytesOut":           dataCollector.TotalBytesOut,
-				"TotaldurationSecondsOut": dataCollector.TotaldurationSecondsOut,
-			}
-			awsTCPDump.JsonLogger.InfoM(output)
-		}
-
-		return nil
-	}
-}
-
-// Summarize the sent and received traffic into data collector.
-func (awsTCPDump *AWSTCPDump) FlowLogEventsEchoHandler(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error {
-	return func(event *cloudwatchlogs.OutputLogEvent) error {
-		dataCollectorPrev := *dataCollector
-		if strings.Contains(*event.Message, "NODATA") {
-			return nil
-		}
-		//fmt.Println("  ", *event.Message)
-		stringSplit := strings.Split(*event.Message, " ")
-		srcaddr := stringSplit[3]
-		dstaddr := stringSplit[4]
-		ipSrc := net.ParseIP(srcaddr)
-		ipDst := net.ParseIP(dstaddr)
-		if ipSrc == nil || ipDst == nil {
-			return fmt.Errorf("srcaddr: %v, dstaddr: %v ", srcaddr, dstaddr)
-		}
-
-		if ipSrc.IsPrivate() && ipDst.IsPrivate() {
-			return nil
-		}
-		if !ipSrc.IsPrivate() && !ipDst.IsPrivate() {
-			return fmt.Errorf("public to public not supported yet: %s", *event.Message)
-		}
-
-		bytes, err := strconv.Atoi(stringSplit[9])
-		if err != nil {
-			return err
-		}
-
-		secondsStart, err := strconv.Atoi(stringSplit[10])
-		if err != nil {
-			return err
-		}
-
-		secondsEnd, err := strconv.Atoi(stringSplit[11])
-		if err != nil {
-			return err
-		}
-		secondsDuration := uint64(secondsEnd) - uint64(secondsStart)
-		if secondsDuration == 0 {
-			secondsDuration = 1
-		}
-		minuteBytes := uint64(bytes*60) / secondsDuration
-
-		if ipSrc.IsPrivate() {
-			dataCollector.MaxMinuteBytesOut = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesOut)
-			dataCollector.MinMinuteBytesOut = min(uint64(minuteBytes), dataCollector.MinMinuteBytesOut)
-			dataCollector.TotalBytesOut += uint64(bytes)
-			dataCollector.TotaldurationSecondsOut += secondsDuration
-
-		} else {
-			dataCollector.MaxMinuteBytesIn = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesIn)
-			dataCollector.MinMinuteBytesIn = min(uint64(minuteBytes), dataCollector.MinMinuteBytesIn)
-			dataCollector.TotalBytesIn += uint64(bytes)
-			dataCollector.TotaldurationSecondsIn += secondsDuration
-		}
-
-		if dataCollectorPrev != *dataCollector {
-			lg.InfoF("NetworkInterfaceId %s TotalBytesIn: %d, TotalDurationIn: %d", *dataCollector.NetworkInterfaceId, dataCollector.TotalBytesIn, dataCollector.TotaldurationSecondsIn)
-			output := map[string]any{"NetworkInterfaceId": *dataCollector.NetworkInterfaceId,
-				"MinMinuteBytesIn":        dataCollector.MinMinuteBytesIn,
-				"MaxMinuteBytesIn":        dataCollector.MaxMinuteBytesIn,
-				"TotalBytesIn":            dataCollector.TotalBytesIn,
-				"TotaldurationSecondsIn":  dataCollector.TotaldurationSecondsIn,
-				"MinMinuteBytesOut":       dataCollector.MinMinuteBytesOut,
-				"MaxMinuteBytesOut":       dataCollector.MaxMinuteBytesOut,
-				"TotalBytesOut":           dataCollector.TotalBytesOut,
-				"TotaldurationSecondsOut": dataCollector.TotaldurationSecondsOut,
-			}
-			awsTCPDump.JsonLogger.InfoM(output)
-		}
-
-		return nil
-	}
 }
 
 func (awsTCPDump *AWSTCPDump) GetInterfaceChanges(config *AWSTCPDumpConfig, KnownNetworkInterfaces *map[string]context.CancelFunc, subnetId string) ([]string, []string, error) {
@@ -499,7 +344,6 @@ func (awsTCPDump *AWSTCPDump) StartInterfaceRecording(workPool *chan bool, inter
 	}
 
 	var nextToken *string
-	dataCollector := interfaceDataCollector{NetworkInterfaceId: &interId, MinMinuteBytesIn: math.MaxInt64, MinMinuteBytesOut: math.MaxInt64}
 
 	nowUTC := time.Now().UTC()
 	epochNowSeconds := nowUTC.Unix()
@@ -511,12 +355,15 @@ func (awsTCPDump *AWSTCPDump) StartInterfaceRecording(workPool *chan bool, inter
 			pEpochStartMiliSeconds = nil
 		}
 		*workPool <- true
-		lastResp, err := clients.YieldCloudwatchLogStream(&awsTCPDump.Config.Region, &subnetLogGroupName, stream.LogStreamName, nextToken, pEpochStartMiliSeconds, nil, awsTCPDump.FlowLogEventsHandler(&dataCollector))
+		lastResp, err := clients.YieldCloudwatchLogStream(&awsTCPDump.Config.Region, &subnetLogGroupName, stream.LogStreamName, nextToken, pEpochStartMiliSeconds, nil, awsTCPDump.FlowLogEventsProcessRoutine)
 		<-*workPool
 
 		if err != nil {
 			lg.InfoF("call StartInterfaceRecording(%s, %s)->YieldCloudwatchLogStream %v", awsTCPDump.Config.Region, subnetLogGroupName, err)
 			time.Sleep(5 * time.Second)
+
+			//todo: check this logic:
+			awsTCPDump.Done = true
 		}
 
 		if lastResp != nil {
@@ -588,4 +435,273 @@ func AWSTCPDumpAnalize(filePath string) (string, error) {
 		lg.InfoF("Max In:  %v: %d , Max Out: %v: %d", *maxInInterface.NetworkInterfaceId, maxInBytes, *maxOutInterface.NetworkInterfaceId, maxOutBytes)
 	}
 	return ret, nil
+}
+
+type interfaceDataCollector struct {
+	NetworkInterfaceId     *string
+	MaxMinuteBytesIn       uint64
+	MinMinuteBytesIn       uint64
+	TotalBytesIn           uint64
+	TotaldurationSecondsIn uint64
+
+	MaxMinuteBytesOut       uint64
+	MinMinuteBytesOut       uint64
+	TotalBytesOut           uint64
+	TotaldurationSecondsOut uint64
+}
+
+// Summarize the sent and received traffic into data collector.
+func (awsTCPDump *AWSTCPDump) FlowLogEventsBytesSummarizerHandler(dataCollector *interfaceDataCollector) func(*cloudwatchlogs.OutputLogEvent) error {
+	return func(event *cloudwatchlogs.OutputLogEvent) error {
+		dataCollectorPrev := *dataCollector
+		if strings.Contains(*event.Message, "NODATA") {
+			return nil
+		}
+		//fmt.Println("  ", *event.Message)
+		stringSplit := strings.Split(*event.Message, " ")
+		srcaddr := stringSplit[3]
+		dstaddr := stringSplit[4]
+		ipSrc := net.ParseIP(srcaddr)
+		ipDst := net.ParseIP(dstaddr)
+		if ipSrc == nil || ipDst == nil {
+			return fmt.Errorf("srcaddr: %v, dstaddr: %v ", srcaddr, dstaddr)
+		}
+
+		if ipSrc.IsPrivate() && ipDst.IsPrivate() {
+			return nil
+		}
+		if !ipSrc.IsPrivate() && !ipDst.IsPrivate() {
+			return fmt.Errorf("public to public not supported yet: %s", *event.Message)
+		}
+
+		bytes, err := strconv.Atoi(stringSplit[9])
+		if err != nil {
+			return err
+		}
+
+		secondsStart, err := strconv.Atoi(stringSplit[10])
+		if err != nil {
+			return err
+		}
+
+		secondsEnd, err := strconv.Atoi(stringSplit[11])
+		if err != nil {
+			return err
+		}
+		secondsDuration := uint64(secondsEnd) - uint64(secondsStart)
+		if secondsDuration == 0 {
+			secondsDuration = 1
+		}
+		minuteBytes := uint64(bytes*60) / secondsDuration
+
+		if ipSrc.IsPrivate() {
+			dataCollector.MaxMinuteBytesOut = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesOut)
+			dataCollector.MinMinuteBytesOut = min(uint64(minuteBytes), dataCollector.MinMinuteBytesOut)
+			dataCollector.TotalBytesOut += uint64(bytes)
+			dataCollector.TotaldurationSecondsOut += secondsDuration
+
+		} else {
+			dataCollector.MaxMinuteBytesIn = max(uint64(minuteBytes), dataCollector.MaxMinuteBytesIn)
+			dataCollector.MinMinuteBytesIn = min(uint64(minuteBytes), dataCollector.MinMinuteBytesIn)
+			dataCollector.TotalBytesIn += uint64(bytes)
+			dataCollector.TotaldurationSecondsIn += secondsDuration
+		}
+
+		if dataCollectorPrev != *dataCollector {
+			lg.InfoF("NetworkInterfaceId %s TotalBytesIn: %d, TotalDurationIn: %d", *dataCollector.NetworkInterfaceId, dataCollector.TotalBytesIn, dataCollector.TotaldurationSecondsIn)
+			output := map[string]any{"NetworkInterfaceId": *dataCollector.NetworkInterfaceId,
+				"MinMinuteBytesIn":        dataCollector.MinMinuteBytesIn,
+				"MaxMinuteBytesIn":        dataCollector.MaxMinuteBytesIn,
+				"TotalBytesIn":            dataCollector.TotalBytesIn,
+				"TotaldurationSecondsIn":  dataCollector.TotaldurationSecondsIn,
+				"MinMinuteBytesOut":       dataCollector.MinMinuteBytesOut,
+				"MaxMinuteBytesOut":       dataCollector.MaxMinuteBytesOut,
+				"TotalBytesOut":           dataCollector.TotalBytesOut,
+				"TotaldurationSecondsOut": dataCollector.TotaldurationSecondsOut,
+			}
+			awsTCPDump.JsonLogger.InfoM(output)
+		}
+
+		return nil
+	}
+}
+
+type FlowLogEvent struct {
+	Version     string
+	AccoundID   string
+	InterfaceID string
+	SrcAddr     net.IP
+	DstAddr     net.IP
+	SrcPort     int
+	DstPort     int
+	Protocol    string
+	Packets     int
+	Bytes       int
+	Start       int
+	End         int
+	Action      string
+	LogStatus   string
+}
+
+func (awsTCPDump *AWSTCPDump) EventsEchoFilter(event *FlowLogEvent) (*FlowLogEvent, error) {
+	return event, nil
+
+}
+
+func (awsTCPDump *AWSTCPDump) FlowLogEventsProcessRoutine(CloudwatchEvent *cloudwatchlogs.OutputLogEvent) error {
+	event, err := awsTCPDump.ParseEvent(CloudwatchEvent)
+	if err != nil {
+		return err
+	}
+
+	event, err = awsTCPDump.EventsFilter(event)
+	if err != nil {
+		return err
+	}
+
+	if event != nil {
+		return awsTCPDump.EventProcessor(event)
+	}
+	return nil
+}
+
+// Summarize the sent and received traffic into data collector.
+func (awsTCPDump *AWSTCPDump) ParseEvent(event *cloudwatchlogs.OutputLogEvent) (*FlowLogEvent, error) {
+	// ${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}
+
+	retFlowEvent := &FlowLogEvent{}
+	stringSplit := strings.Split(*event.Message, " ")
+	retFlowEvent.Version = stringSplit[0]
+	retFlowEvent.AccoundID = stringSplit[1]
+	retFlowEvent.InterfaceID = stringSplit[2]
+	secondsStart, err := strconv.Atoi(stringSplit[10])
+	if err != nil {
+		return nil, err
+	}
+	retFlowEvent.Start = secondsStart
+
+	secondsEnd, err := strconv.Atoi(stringSplit[11])
+	if err != nil {
+		return nil, err
+	}
+	retFlowEvent.End = secondsEnd
+	retFlowEvent.LogStatus = stringSplit[13]
+
+	if strings.Contains(*event.Message, "NODATA") {
+		return retFlowEvent, nil
+	}
+
+	//fmt.Println("  ", *event.Message)
+
+	ipSrc := net.ParseIP(stringSplit[3])
+	ipDst := net.ParseIP(stringSplit[4])
+	if ipSrc == nil || ipDst == nil {
+		return nil, fmt.Errorf("srcaddr: %v, dstaddr: %v ", stringSplit[3], stringSplit[4])
+	}
+
+	retFlowEvent.SrcAddr = ipSrc
+	retFlowEvent.DstAddr = ipDst
+
+	srcPort, err := strconv.Atoi(stringSplit[5])
+	if err != nil {
+		return nil, err
+	}
+	retFlowEvent.SrcPort = srcPort
+
+	dstPort, err := strconv.Atoi(stringSplit[6])
+	if err != nil {
+		return nil, err
+	}
+	retFlowEvent.DstPort = dstPort
+
+	retFlowEvent.Protocol = stringSplit[7]
+
+	packets, err := strconv.Atoi(stringSplit[8])
+	if err != nil {
+		return nil, err
+	}
+	retFlowEvent.Packets = packets
+
+	bytes, err := strconv.Atoi(stringSplit[9])
+	if err != nil {
+		return nil, err
+	}
+	retFlowEvent.Bytes = bytes
+
+	retFlowEvent.Action = stringSplit[12]
+
+	return retFlowEvent, nil
+}
+
+func (awsTCPDump *AWSTCPDump) EventsEchoWriter(event *FlowLogEvent) error {
+
+	logger := &(logger.Logger{FileDst: awsTCPDump.Config.ProcessedOutputFilePath, AddLogLevel: false})
+	jsonBytes, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("error marshaling NetworkInterface to JSON: %v", err)
+	}
+
+	var niMap map[string]any
+	err = json.Unmarshal(jsonBytes, &niMap)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling JSON to map: %v", err)
+
+	}
+	logger.InfoM(niMap)
+	return nil
+}
+
+func (awsTCPDump *AWSTCPDump) EventsEchoWriterUTCTime(event *FlowLogEvent) error {
+
+	logger := &(logger.Logger{FileDst: awsTCPDump.Config.ProcessedOutputFilePath, AddLogLevel: false})
+	jsonBytes, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("error marshaling NetworkInterface to JSON: %v", err)
+	}
+
+	var niMap map[string]any
+	err = json.Unmarshal(jsonBytes, &niMap)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling JSON to map: %v", err)
+
+	}
+
+	float64Start, ok := niMap["Start"].(float64)
+	if !ok {
+		return fmt.Errorf("was not able to convert time Start %d to int", niMap["Start"])
+	}
+
+	float64End, ok := niMap["End"].(float64)
+	if !ok {
+		return fmt.Errorf("was not able to convert time End %d to int", niMap["End"])
+	}
+
+	startTimeUTC := time.Unix(int64(float64Start), 0).UTC()
+	endTimeUTC := time.Unix(int64(float64End), 0).UTC()
+	niMap["Start"] = startTimeUTC.Format(time.RFC3339)
+	niMap["End"] = endTimeUTC.Format(time.RFC3339)
+	logger.InfoM(niMap)
+	return nil
+}
+
+func (awsTCPDump *AWSTCPDump) GenerateSubnetFilter(subnetStrings []string) func(*FlowLogEvent) (*FlowLogEvent, error) {
+	return func(event *FlowLogEvent) (*FlowLogEvent, error) {
+		CIDRSubnets := []*net.IPNet{}
+		for _, subnetString := range subnetStrings {
+			_, netSrc, err := net.ParseCIDR(subnetString)
+
+			CIDRSubnets = append(CIDRSubnets, netSrc)
+			if err != nil {
+				return nil, nil
+			}
+		}
+
+		for _, CIDRSubnet := range CIDRSubnets {
+
+			if CIDRSubnet.Contains(event.DstAddr) {
+				return event, nil
+			}
+		}
+		return event, nil
+	}
 }
