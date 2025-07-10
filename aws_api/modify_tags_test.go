@@ -195,11 +195,20 @@ func TestAddTagsS3Buckets(t *testing.T) {
 	})
 }
 
-
-func TestCheckTagsECSTaskdefinitions(t *testing.T) {
+func TestAddTagsECSTaskdefinitions(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := CheckTagsECSTaskDefinitions(realConfig)
+		err := AddTagsECSTaskdefinitions(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsCloudwatchLogGroups(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsCloudwatchLogGroups(realConfig)
 		if err != nil {
 			t.Errorf("%v", err)
 		}

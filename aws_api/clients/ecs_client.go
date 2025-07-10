@@ -1,8 +1,6 @@
 package aws_api
 
 import (
-	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecs"
@@ -44,11 +42,11 @@ func (api *ECSAPI) GetTaskDefinitions(callback GenericCallback, Input *ecs.ListT
 				return false
 			}
 
-			tags, err := api.svc.ListTagsForResource(&ecs.ListTagsForResourceInput{ResourceArn: arn})
-			if err != nil {
-				return false
-			}
-			fmt.Printf("todo: handle tags in GetTaskDefinitions %s", tags)
+			//tags, err := api.svc.ListTagsForResource(&ecs.ListTagsForResourceInput{ResourceArn: arn})
+			//if err != nil {
+			//	return false
+			//}
+			//fmt.Printf("todo: handle tags in GetTaskDefinitions %s", tags)
 			if callbackErr = callback(response.TaskDefinition); callbackErr != nil {
 				return false
 			}
@@ -78,4 +76,17 @@ func (api *ECSAPI) GetTaskDefinitionFamilies(callback GenericCallback, Input *ec
 		return callbackErr
 	}
 	return err
+}
+
+func (api *ECSAPI) GetTags(resource *string) ([]*ecs.Tag, error) {
+	ListTagsForResourceOutput, err := api.svc.ListTagsForResource(&ecs.ListTagsForResourceInput{ResourceArn: resource})
+
+	if err != nil {
+		return nil, err
+	}
+	ret := []*ecs.Tag{}
+
+	ret = append(ret, ListTagsForResourceOutput.Tags...)
+
+	return ret, nil
 }

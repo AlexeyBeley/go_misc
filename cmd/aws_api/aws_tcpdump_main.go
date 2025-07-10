@@ -19,9 +19,9 @@ func main() {
 
 	actions = make(map[string]any, 0)
 
-	config_file_path := "/opt/aws_api_go/AWSTCPDumpConfig.json"
-	lg.InfoF("Initializing: %s", config_file_path)
-	awsTCPDumpNew, err := aws_api.AWSTCPDumpNew(config_file_path)
+	//config_file_path := "/opt/aws_api_go/AWSTCPDumpConfig.json"
+	//lg.InfoF("Initializing: %s", config_file_path)
+	awsTCPDumpNew, err := aws_api.AWSTCPDumpNew()
 	if err != nil {
 		panic(err)
 	}

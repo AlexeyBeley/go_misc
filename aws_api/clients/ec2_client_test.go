@@ -33,7 +33,7 @@ func LoadEC2TestConfig(configFilePath string) (config ECTestConfiguration, err e
 
 func loadEC2TestRealConfig() ECTestConfiguration {
 	os.Getenv("CONFIG_PATH")
-	conf_path := "/tmp/ec2.json"
+	conf_path := "w"
 	config, err := LoadEC2TestConfig(conf_path)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -133,7 +133,7 @@ func TestDescribeVpcEndpointsPages(t *testing.T) {
 		api := EC2APINew(&realConfig.Region, &realConfig.ProfileName)
 
 		objects := make([]any, 0)
-		err := api.DescribeVpcEndpointsPages(Echo, nil)
+		err := api.DescribeVpcEndpointsPages(CallbackEcho, nil)
 		if err != nil {
 			t.Errorf("%v", err)
 		}

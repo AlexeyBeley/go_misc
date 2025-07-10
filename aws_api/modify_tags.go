@@ -5,6 +5,7 @@ import (
 
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
@@ -486,17 +487,23 @@ func AnyToStrings(src []any) (dst []*string, err error) {
 	return dst, err
 }
 
-func HandleTaskDefinition(anyObject any) error {
+func CheckTaskDefinitionHasTags(api *clients.ECSAPI, anyObject any) (*ecs.TaskDefinition, error) {
 	obj, ok := anyObject.(*ecs.TaskDefinition)
 	if !ok {
 		panic(anyObject)
 	}
 
-	lg.InfoF("Tod: %v", obj)
-	return nil
+	ret, err := api.GetTags(obj.TaskDefinitionArn)
+	if err != nil {
+		return nil, err
+	}
+	if len(ret) == 0 {
+		return obj, nil
+	}
+	return nil, nil
 }
 
-func CheckTagsECSTaskDefinitions(config ModifyTagsConfig) error {
+func AddTagsECSTaskdefinitions(config ModifyTagsConfig) error {
 	api := clients.ECSAPINew(&config.Region, nil)
 	objects := make([]any, 0)
 	err := api.GetTaskDefinitionFamilies(clients.AggregatorInitializer(&objects), nil)
@@ -509,18 +516,54 @@ func CheckTagsECSTaskDefinitions(config ModifyTagsConfig) error {
 		return err
 	}
 
-	for _, familyName := range families {
+	//lg.InfoF("Checking %d families", len(families))
+	for i, familyName := range families {
+		lg.InfoF("Checked %d/%d families", i, len(families))
 		objects = objects[:0]
-		api.GetTaskDefinitions(clients.AggregatorInitializer(&objects), &ecs.ListTaskDefinitionsInput{FamilyPrefix: familyName, MaxResults: int64Ptr(int64(1)), Sort: strPtr("DESC")})
-		lg.InfoF("Fetched %d task definitions family: %s", len(objects), *familyName)
+
+		api.GetTaskDefinitions(clients.AggregatorInitializer(&objects), &ecs.ListTaskDefinitionsInput{FamilyPrefix: familyName, MaxResults: clients.Int64Ptr(int64(1)), Sort: clients.StrPtr("DESC")})
+		//lg.InfoF("Fetched %d task definitions family: %s", len(objects), *familyName)
+		if len(objects) == 0 {
+			continue
+		}
+		td, err := CheckTaskDefinitionHasTags(api, objects[0])
+		if err != nil {
+			return err
+		}
+		if td != nil {
+			lg.InfoF("Adding Tags to task definition %s", *td.TaskDefinitionArn)
+		}
+
 	}
 	return nil
 }
 
-func int64Ptr(i int64) *int64 {
-	return &i
-}
+func AddTagsCloudwatchLogGroups(config ModifyTagsConfig) error {
+	api := clients.CloudwatchLogsAPINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.GetLogGroups(clients.AggregatorInitializer(&objects), nil)
+	if err != nil {
+		return err
+	}
 
-func strPtr(src string) *string {
-	return &src
+	tagsRequest := map[string]*string{}
+	for keySrc, valueSrc := range config.AddTags {
+		tagsRequest[keySrc] = &valueSrc
+	}
+
+	//lg.InfoF("Checking %d families", len(families))
+	for i, anyLogGroup := range objects {
+		logGroup, ok := anyLogGroup.(*cloudwatchlogs.LogGroup)
+		if !ok {
+			panic("Wrong cast")
+		}
+
+		lg.InfoF("Updated %d/%d log groups", i, len(objects))
+
+		err := api.ProvisionTags(logGroup, tagsRequest)
+		if err != nil {
+			panic("Was not able to tag log group")
+		}
+	}
+	return nil
 }

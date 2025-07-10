@@ -2,6 +2,7 @@ package aws_api
 
 import (
 	"flag"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,7 +12,8 @@ func TestStartEcho(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		config_file_path := "/opt/aws_api_go/AWSTCPDumpConfig.json"
 		lg.InfoF("Initializing: %s", config_file_path)
-		awsTCPDumpNew, err := AWSTCPDumpNew(config_file_path)
+		os.Args = []string{"program_name", "-config", config_file_path}
+		awsTCPDumpNew, err := AWSTCPDumpNew()
 		awsTCPDumpNew.EventsFilter = awsTCPDumpNew.EventsEchoFilter
 		awsTCPDumpNew.EventProcessor = awsTCPDumpNew.EventsEchoWriter
 		if err != nil {
@@ -30,7 +32,8 @@ func TestStartSubnetFilter(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		config_file_path := "/opt/aws_api_go/AWSTCPDumpConfig.json"
 		lg.InfoF("Initializing: %s", config_file_path)
-		awsTCPDumpNew, err := AWSTCPDumpNew(config_file_path)
+		os.Args = []string{"--config", config_file_path}
+		awsTCPDumpNew, err := AWSTCPDumpNew()
 		awsTCPDumpNew.EventsFilter = awsTCPDumpNew.GenerateSubnetFilter([]string{""})
 		awsTCPDumpNew.EventProcessor = awsTCPDumpNew.EventsEchoWriterUTCTime
 		if err != nil {
@@ -77,12 +80,12 @@ func TestParseArgs(t *testing.T) {
 			args:     []string{"--subnets", "sb-12345"},
 			expected: &AWSTCPDumpConfig{Region: "", Subnets: []string{"sb-12345"}, AWSProfile: "default", LiveRecording: false},
 			wantErr:  false,
-		},{
+		}, {
 			name:     "profile",
 			args:     []string{"--subnets", "sb-12345", "--profile", "non-default"},
 			expected: &AWSTCPDumpConfig{Region: "", Subnets: []string{"sb-12345"}, AWSProfile: "non-default", LiveRecording: false},
 			wantErr:  false,
-		},{
+		}, {
 			name:     "live",
 			args:     []string{"--subnets", "sb-12345", "--live", "true"},
 			expected: &AWSTCPDumpConfig{Region: "", Subnets: []string{"sb-12345"}, AWSProfile: "default", LiveRecording: true},

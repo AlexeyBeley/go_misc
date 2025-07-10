@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -42,57 +43,71 @@ type AWSTCPDump struct {
 	EventProcessor func(*FlowLogEvent) error
 }
 
-func AWSTCPDumpNew(configFilePath string) (*AWSTCPDump, error) {
+func AWSTCPDumpNew() (*AWSTCPDump, error) {
 
 	new := &AWSTCPDump{}
 	new.initConfig()
-	config := AWSTCPDumpConfig{}
 
-	jsonString, err := os.ReadFile(configFilePath)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal([]byte(jsonString), &config)
-	if err != nil {
-		return nil, err
-	}
-
-	new.Config = &config
 	new.Done = false
-	new.Config.LiveRecording = true
 
-	if new.Config.ProcessedOutputFilePath == "" {
-		new.Config.ProcessedOutputFilePath = "/tmp/aws_tcpdump_processed.json"
-		if _, err := os.Stat(new.Config.ProcessedOutputFilePath); err == nil {
-			os.Truncate(new.Config.ProcessedOutputFilePath, 0)
-		}
-	}
-
-	if _, err := os.Stat(config.InterfacesOutputFilePath); err == nil {
-		os.Truncate(config.InterfacesOutputFilePath, 0)
-	} else if !os.IsNotExist(err) {
-		fmt.Printf("Error checking file  '%s': %v\n", config.InterfacesOutputFilePath, err)
-	}
-
-	lg.FileDst = config.LogOutputFilePath
-	if _, err := os.Stat(config.LogOutputFilePath); err == nil {
-		os.Truncate(config.LogOutputFilePath, 0)
-	}
-
-	new.JsonLogger = &(logger.Logger{FileDst: config.InterfacesOutputFilePath, AddDateTime: true})
+	new.JsonLogger = &(logger.Logger{FileDst: new.Config.InterfacesOutputFilePath, AddDateTime: true})
 
 	return new, nil
 }
 
 func (AwsTCPDump *AWSTCPDump) ParseArgs(flagset *flag.FlagSet, args []string) (*AWSTCPDumpConfig, error) {
-	region := flagset.String("region", "", "AWS Region")
-	subnetsString := flagset.String("subnets", "", "AWS Subnets to listen too")
-	profile := flagset.String("profile", "default", "AWS profile")
-	live := flagset.Bool("live", false, "Live traffic recording")
+	var region *string
+	if slices.Contains(args, "-region") {
+		region = flagset.String("region", "", "AWS Region")
+	} else {
+		region = new(string)
+	}
+
+	var subnetsString *string
+	if slices.Contains(args, "-subnets") {
+		subnetsString = flagset.String("subnets", "", "AWS Subnets to listen too")
+	} else {
+		subnetsString = new(string)
+	}
+
+	var profile *string
+	if slices.Contains(args, "-profile") {
+		profile = flagset.String("profile", "default", "AWS profile")
+	} else {
+		profile = new(string)
+	}
+
+	var live *bool
+	if slices.Contains(args, "-live") {
+		live = flagset.Bool("live", false, "Live traffic recording")
+	} else {
+		live = new(bool)
+	}
+
+	var config *string
+	if slices.Contains(args, "-config") {
+		config = flagset.String("confg", "", "Configuration file path")
+	} else {
+		config = new(string)
+	}
 
 	err := flagset.Parse(args)
 	if err != nil {
 		return nil, err
+	}
+
+	ret := &AWSTCPDumpConfig{}
+
+	if *config != "" {
+		jsonString, err := os.ReadFile(*config)
+
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal([]byte(jsonString), config)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var subnetsSlice []string
@@ -102,7 +117,20 @@ func (AwsTCPDump *AWSTCPDump) ParseArgs(flagset *flag.FlagSet, args []string) (*
 		subnetsSlice = strings.Split(*subnetsString, ",")
 	}
 
-	ret := &AWSTCPDumpConfig{Region: *region, Subnets: subnetsSlice, AWSProfile: *profile, LiveRecording: *live}
+	if *region != "" {
+		ret.Region = *region
+	}
+	if subnetsSlice != nil {
+		ret.Subnets = subnetsSlice
+	}
+	if *profile != "" {
+		ret.AWSProfile = *profile
+	}
+
+	if *live {
+		ret.LiveRecording = *live
+	}
+
 	return ret, nil
 }
 
@@ -120,6 +148,35 @@ func (AwsTCPDump *AWSTCPDump) initConfig() error {
 		return err
 	}
 	AwsTCPDump.Config = config
+
+	if AwsTCPDump.Config.ProcessedOutputFilePath == "" {
+		AwsTCPDump.Config.ProcessedOutputFilePath = "/opt/aws_api/tcpdump/output/data.log"
+
+	}
+
+	if _, err := os.Stat(AwsTCPDump.Config.ProcessedOutputFilePath); err == nil {
+		os.Truncate(AwsTCPDump.Config.ProcessedOutputFilePath, 0)
+	}
+
+	if AwsTCPDump.Config.InterfacesOutputFilePath == "" {
+		AwsTCPDump.Config.InterfacesOutputFilePath = "/opt/aws_api/tcpdump/output/interfaces.json"
+	}
+
+	if _, err := os.Stat(config.InterfacesOutputFilePath); err == nil {
+		os.Truncate(config.InterfacesOutputFilePath, 0)
+	} else if !os.IsNotExist(err) {
+		fmt.Printf("Error checking file  '%s': %v\n", config.InterfacesOutputFilePath, err)
+	}
+
+	if AwsTCPDump.Config.LogOutputFilePath == "" {
+		AwsTCPDump.Config.LogOutputFilePath = "/opt/aws_api/tcpdump/output/tcpdump_log.log"
+
+	}
+
+	if _, err := os.Stat(config.LogOutputFilePath); err == nil {
+		os.Truncate(config.LogOutputFilePath, 0)
+	}
+	lg.FileDst = config.LogOutputFilePath
 	return nil
 }
 

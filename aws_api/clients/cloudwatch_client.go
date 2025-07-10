@@ -11,8 +11,8 @@ import (
 )
 
 type Configuration struct {
-	Region   string `json:"Region"`
-	LogGroup string `json:"LogGroup"`
+	Region  string `json:"Region"`
+	Profile string `json:"Profile"`
 }
 
 func LoadConfig(configFilePath string) (config Configuration, err error) {
@@ -233,4 +233,57 @@ func (api *CloudwatchLogsAPI) GetLogGroup(name *string) (logGroup *cloudwatchlog
 		return response.LogGroups[0], nil
 	}
 	return logGroup, err
+}
+
+func (api *CloudwatchLogsAPI) GetLogGroups(callback GenericCallback, Input *cloudwatchlogs.DescribeLogGroupsInput) error {
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.DescribeLogGroupsPages(Input, func(page *cloudwatchlogs.DescribeLogGroupsOutput, notHasNextPage bool) bool {
+
+		pageNum++
+		for _, logGroup := range page.LogGroups {
+			if callbackErr = callback(logGroup); callbackErr != nil {
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+	if callbackErr != nil {
+		return callbackErr
+	}
+	return err
+}
+
+func (api *CloudwatchLogsAPI) GetTags(Input *cloudwatchlogs.ListTagsForResourceInput) (map[string]*string, error) {
+	response, err := api.svc.ListTagsForResource(Input)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Tags, nil
+}
+
+func (api *CloudwatchLogsAPI) ProvisionTags(targetGroup *cloudwatchlogs.LogGroup, DesiredTags map[string]*string) error {
+	missingTags := map[string]*string{}
+	currentTags, err := api.GetTags(&cloudwatchlogs.ListTagsForResourceInput{ResourceArn: targetGroup.LogGroupArn})
+	if err != nil {
+		return nil
+	}
+
+	for desiredKey, desiredValue := range DesiredTags {
+		if currentValue, found := currentTags[desiredKey]; !found || *currentValue != *desiredValue {
+			missingTags[desiredKey] = desiredValue
+		}
+	}
+
+	if len(missingTags) == 0 {
+		return nil
+	}
+	req := cloudwatchlogs.TagResourceInput{ResourceArn: targetGroup.LogGroupArn, Tags: missingTags}
+	lg.InfoF("Adding tags: resource: %s, tags: %v, current tags: %v", *targetGroup.LogGroupArn, missingTags, currentTags)
+	_, err = api.svc.TagResource(&req)
+	if err != nil {
+		return err
+	}
+	return err
 }

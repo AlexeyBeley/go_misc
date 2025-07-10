@@ -15,7 +15,7 @@ import (
 
 func loadRealConfig() Configuration {
 	os.Getenv("CONFIG_PATH")
-	conf_path := "/tmp/cloudwatch.json"
+	conf_path := "/opt/aws_api_go/test_cloudwatchlogs.json"
 	config, err := LoadConfig(conf_path)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -26,7 +26,7 @@ func loadRealConfig() Configuration {
 func TestFetchCloudwatchLogStream(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := FetchCloudwatchLogStream(realConfig.Region, realConfig.LogGroup, realConfig.LogGroup)
+		err := FetchCloudwatchLogStream(realConfig.Region, "test", "test")
 		if err != nil {
 			t.Errorf("%v", err)
 		}
@@ -36,7 +36,7 @@ func TestFetchCloudwatchLogStream(t *testing.T) {
 func TestLogStreamsCache(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()
-		err := LogStreamsCache(realConfig.Region, realConfig.LogGroup)
+		err := LogStreamsCache(realConfig.Region, "test")
 		if err != nil {
 			t.Errorf("%v", err)
 		}
@@ -56,7 +56,7 @@ func TestYieldCloudwatchLogStream(t *testing.T) {
 		epochEndMiliSeconds := epochEndSeconds * 1000
 		epochStartMiliSeconds := epochStartSeconds * 1000
 
-		_, err := YieldCloudwatchLogStream(&realConfig.Region, &realConfig.LogGroup, &streamName, nil, &epochStartMiliSeconds, &epochEndMiliSeconds, BytesSummarizerInt(&counter))
+		_, err := YieldCloudwatchLogStream(&realConfig.Region, StrPtr(""), &streamName, nil, &epochStartMiliSeconds, &epochEndMiliSeconds, BytesSummarizerInt(&counter))
 		if err != nil {
 			t.Errorf("%v", err)
 		}
@@ -89,4 +89,19 @@ func BytesSummarizerInt(aggregator *int) func(*cloudwatchlogs.OutputLogEvent) er
 		*aggregator += bytes
 		return nil
 	}
+}
+
+func TestGetLogGroups(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+
+		realConfig := loadRealConfig()
+		api := CloudwatchLogsAPINew(&realConfig.Region, nil)
+
+		objects := make([]any, 0)
+		err := api.GetLogGroups(CallbackEcho, nil)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+		fmt.Printf("Todo: refactor Counter to Cacher Objects: %d\n", len(objects))
+	})
 }

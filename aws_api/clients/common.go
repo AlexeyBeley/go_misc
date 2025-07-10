@@ -24,10 +24,25 @@ func Counter() func(any) error {
 	}
 }
 
-
-func Echo(Something any) error {
-		fmt.Printf("raw AWS API response: %v\n", Something)
-		return nil
-	}
+func CallbackEcho(Something any) error {
+	fmt.Printf("raw AWS API response: %v\n", Something)
+	return nil
+}
 
 var lg = &(logger.Logger{})
+
+func Int32Ptr(i int32) *int32 {
+	return &i
+}
+
+func Int64Ptr(i int64) *int64 {
+	return &i
+}
+
+func StrPtr(src string) *string {
+	return &src
+}
+
+func BoolPtr(src bool) *bool {
+	return &src
+}
