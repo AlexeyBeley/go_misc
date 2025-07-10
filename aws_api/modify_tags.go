@@ -503,7 +503,7 @@ func CheckTaskDefinitionHasTags(api *clients.ECSAPI, anyObject any) (*ecs.TaskDe
 	return nil, nil
 }
 
-func AddTagsECSTaskdefinitions(config ModifyTagsConfig) error {
+func CheckTagsECSTaskdefinitions(config ModifyTagsConfig) error {
 	api := clients.ECSAPINew(&config.Region, nil)
 	objects := make([]any, 0)
 	err := api.GetTaskDefinitionFamilies(clients.AggregatorInitializer(&objects), nil)
@@ -563,6 +563,41 @@ func AddTagsCloudwatchLogGroups(config ModifyTagsConfig) error {
 		err := api.ProvisionTags(logGroup, tagsRequest)
 		if err != nil {
 			panic("Was not able to tag log group")
+		}
+	}
+	return nil
+}
+
+func AddTagsECSTasks(config ModifyTagsConfig) error {
+	api := clients.ECSAPINew(&config.Region, nil)
+
+	clusters, err := api.IterClusters(&ecs.ListClustersInput{})
+	if err != nil {
+		return err
+	}
+	for _, cluster := range clusters {
+		tasks, err := api.GetTasks(&ecs.ListTasksInput{Cluster: cluster.ClusterArn})
+		if err != nil {
+			return err
+		}
+
+		tagsRequest := map[string]*string{}
+		for keySrc, valueSrc := range config.AddTags {
+			tagsRequest[keySrc] = &valueSrc
+		}
+
+		//lg.InfoF("Checking %d families", len(families))
+		for i, task := range tasks {
+			err := api.ProvisionTags(task, tagsRequest)
+			if err != nil {
+				return err
+			}
+
+			lg.InfoF("Updated %d/%d ECS Tasks", i, len(tasks))
+
+			if err != nil {
+				panic("Was not able to tag log group")
+			}
 		}
 	}
 	return nil
