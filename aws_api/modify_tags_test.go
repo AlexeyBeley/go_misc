@@ -2,7 +2,6 @@ package aws_api
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"testing"
 )
@@ -22,17 +21,18 @@ func LoadDynamicConfig(configFilePath string) (config any, err error) {
 
 func loadRealConfig() ModifyTagsConfig {
 	conf_path := "/opt/ModifyTagsConfig.json"
-	config, err := LoadDynamicConfig(conf_path)
+	jsonData, err := os.ReadFile(conf_path)
 	if err != nil {
-		log.Fatalf("%v", err)
+		panic(err)
 	}
 
-	modifyTagsConfig := ModifyTagsConfig{}
-	err = modifyTagsConfig.InitFromM(config)
+	config := new(ModifyTagsConfig)
+	err = json.Unmarshal([]byte(jsonData), config)
 	if err != nil {
-		log.Fatalf("%v", err)
+		panic(err)
 	}
-	return modifyTagsConfig
+
+	return *config
 }
 
 func TestAddTagsNetworkInterfaces(t *testing.T) {
@@ -224,3 +224,45 @@ func TestAddTagsECSTasks(t *testing.T) {
 		}
 	})
 }
+
+func TestAddTagsSecrets(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsSecrets(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsCloudwatchAlarms(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsCloudwatchAlarms(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestAddTagsDynamoDBTables(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsDynamoDBTables(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+
+func TestAddTagsElasticacheClusters(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		err := AddTagsElasticacheClusters(realConfig)
+		if err != nil {
+			t.Errorf("%v", err)
+		}
+	})
+}
+

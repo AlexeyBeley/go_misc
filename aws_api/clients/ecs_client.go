@@ -34,10 +34,9 @@ func ECSAPINew(region *string, profileName *string) *ECSAPI {
 
 func (api *ECSAPI) GetTaskDefinitions(callback GenericCallback, Input *ecs.ListTaskDefinitionsInput) error {
 	var callbackErr error
-	pageNum := 0
+
 	err := api.svc.ListTaskDefinitionsPages(Input, func(page *ecs.ListTaskDefinitionsOutput, notHasNextPage bool) bool {
 
-		pageNum++
 		for _, arn := range page.TaskDefinitionArns {
 			response, err := api.svc.DescribeTaskDefinition(&ecs.DescribeTaskDefinitionInput{TaskDefinition: arn})
 			if err != nil {
@@ -136,6 +135,38 @@ func (api *ECSAPI) GetTasks(Input *ecs.ListTasksInput) ([]*ecs.Task, error) {
 	return retTasks, nil
 }
 
+func (api *ECSAPI) ProvisionTags(task *ecs.Task, DesiredTags map[string]*string) error {
+	missingTags := []*ecs.Tag{}
+	currentTagsobj, err := api.GetTags(task.TaskArn)
+	if err != nil {
+		return nil
+	}
+
+	currentTags := map[string]*string{}
+	for _, currentTag := range currentTagsobj {
+		currentTags[*currentTag.Key] = currentTag.Value
+
+	}
+
+	for desiredKey, desiredValue := range DesiredTags {
+		if currentValue, found := currentTags[desiredKey]; !found || *currentValue != *desiredValue {
+			Tag := &ecs.Tag{Key: &desiredKey, Value: desiredValue}
+			missingTags = append(missingTags, Tag)
+		}
+	}
+
+	if len(missingTags) == 0 {
+		return nil
+	}
+	req := ecs.TagResourceInput{ResourceArn: task.TaskArn, Tags: missingTags}
+	lg.InfoF("Adding tags: resource: %s, tags: %v, current tags: %v", *task.TaskArn, missingTags, currentTags)
+	_, err = api.svc.TagResource(&req)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
 func (api *ECSAPI) IterClusters(Input *ecs.ListClustersInput) ([]*ecs.Cluster, error) {
 	var callbackErr error
 	objects := make([]any, 0)
@@ -176,34 +207,77 @@ func (api *ECSAPI) IterClusters(Input *ecs.ListClustersInput) ([]*ecs.Cluster, e
 	return retClusters, nil
 }
 
-func (api *ECSAPI) ProvisionTags(task *ecs.Task, DesiredTags map[string]*string) error {
-	missingTags := []*ecs.Tag{}
-	currentTagsobj, err := api.GetTags(task.TaskArn)
-	if err != nil {
-		return nil
-	}
+func (api *ECSAPI) ListClusters(Input *ecs.ListClustersInput) ([]*string, error) {
+	var callbackErr error
+	ret := []*string{}
 
-	currentTags := map[string]*string{}
-	for _, currentTag := range currentTagsobj {
-		currentTags[*currentTag.Key] = currentTag.Value
-
-	}
-
-	for desiredKey, desiredValue := range DesiredTags {
-		if currentValue, found := currentTags[desiredKey]; !found || *currentValue != *desiredValue {
-			Tag := &ecs.Tag{Key: &desiredKey, Value: desiredValue}
-			missingTags = append(missingTags, Tag)
+	err := api.svc.ListClustersPages(Input, func(page *ecs.ListClustersOutput, notHasNextPage bool) bool {
+		if len(page.ClusterArns) == 100 {
+			callbackErr = fmt.Errorf("not implemented len(page.ClusterArns)= %d", len(page.ClusterArns))
+			return false
 		}
+
+		ret = append(ret, page.ClusterArns...)
+
+		return !notHasNextPage
+	})
+
+	if callbackErr != nil {
+		return nil, callbackErr
 	}
 
-	if len(missingTags) == 0 {
-		return nil
-	}
-	req := ecs.TagResourceInput{ResourceArn: task.TaskArn, Tags: missingTags}
-	lg.InfoF("Adding tags: resource: %s, tags: %v, current tags: %v", *task.TaskArn, missingTags, currentTags)
-	_, err = api.svc.TagResource(&req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return err
+
+	return ret, nil
+}
+
+func (api *ECSAPI) GetClusters(Input *ecs.ListClustersInput) (ret []*ecs.Cluster, err error) {
+
+	clustersArns, err := api.ListClusters(&ecs.ListClustersInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	ret = make([]*ecs.Cluster, 0, len(clustersArns))
+
+	bulks, err := api.SplitToBulks(clustersArns, 100)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, bulk := range bulks {
+		output, err := api.svc.DescribeClusters(&ecs.DescribeClustersInput{Clusters: bulk})
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, output.Clusters...)
+	}
+	return ret, nil
+}
+
+func (api *ECSAPI) SplitToBulks(src []*string, size int) (ret [][]*string, err error) {
+	ret = [][]*string{}
+	var start int
+	var end int
+	for i := range len(src) / size {
+		start = i * size
+		end = min((start + size), len(src))
+		if start == end {
+			break
+		}
+		bulk := make([]*string, 0, size)
+		bulk = append(bulk, src[start:end]...)
+		ret = append(ret, bulk)
+	}
+
+	if end < len(src) {
+		bulk := make([]*string, 0, len(src)-end)
+		bulk = append(bulk, src[end:]...)
+		ret = append(ret, bulk)
+	}
+
+	return ret, nil
 }

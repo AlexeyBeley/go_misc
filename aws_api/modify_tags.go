@@ -5,17 +5,20 @@ import (
 
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/secretsmanager"
 )
 
 type ModifyTagsConfig struct {
-	Region  string
-	AddTags map[string]string
+	Region    string                       `json:"Region"`
+	AddTags   map[string]string            `json:"AddTags"`
+	PerRegion map[string]map[string]string `json:"PerRegion"`
 }
 
 func (config *ModifyTagsConfig) InitFromM(source any) error {
@@ -52,30 +55,32 @@ func (config *ModifyTagsConfig) InitFromM(source any) error {
 }
 
 func AddTagsNetworkInterfaces(config ModifyTagsConfig) error {
-	client := clients.GetEC2Client(&config.Region)
-	api := clients.EC2APINew(&config.Region, nil)
-	objects := make([]any, 0)
-	err := clients.DescribeNetworkInterfaces(client, clients.AggregatorInitializer(&objects), nil)
-	if err != nil {
-		return err
-	}
-
-	for _, anyObject := range objects {
-		nInt, ok := anyObject.(*ec2.NetworkInterface)
-		if !ok {
-			panic(anyObject)
-		}
-
-		createTagsOutput, err := api.CreateTags(nInt.TagSet, config.AddTags, nInt.NetworkInterfaceId, false)
+	for region, PerRegionTags := range config.PerRegion {
+		client := clients.GetEC2Client(&region)
+		api := clients.EC2APINew(&region, nil)
+		objects := make([]any, 0)
+		err := clients.DescribeNetworkInterfaces(client, clients.AggregatorInitializer(&objects), nil)
 		if err != nil {
-			ret := err.Error()
-			if strings.Contains(ret, "does not exist") {
-				continue
-			}
 			return err
 		}
-		lg.InfoF("%s", createTagsOutput)
 
+		for _, anyObject := range objects {
+			nInt, ok := anyObject.(*ec2.NetworkInterface)
+			if !ok {
+				panic(anyObject)
+			}
+
+			createTagsOutput, err := api.CreateTags(nInt.TagSet, PerRegionTags, nInt.NetworkInterfaceId, false)
+			if err != nil {
+				ret := err.Error()
+				if strings.Contains(ret, "does not exist") {
+					continue
+				}
+				return err
+			}
+			lg.InfoF("%s", createTagsOutput)
+
+		}
 	}
 	return nil
 }
@@ -569,34 +574,151 @@ func AddTagsCloudwatchLogGroups(config ModifyTagsConfig) error {
 }
 
 func AddTagsECSTasks(config ModifyTagsConfig) error {
-	api := clients.ECSAPINew(&config.Region, nil)
+	for region, perRegionTags := range config.PerRegion {
+		api := clients.ECSAPINew(&region, nil)
 
-	clusters, err := api.IterClusters(&ecs.ListClustersInput{})
+		clusters, err := api.IterClusters(&ecs.ListClustersInput{})
+		if err != nil {
+			return err
+		}
+		for _, cluster := range clusters {
+			tasks, err := api.GetTasks(&ecs.ListTasksInput{Cluster: cluster.ClusterArn})
+			if err != nil {
+				return err
+			}
+
+			tagsRequest := map[string]*string{}
+			for keySrc, valueSrc := range perRegionTags {
+				tagsRequest[keySrc] = &valueSrc
+			}
+
+			//lg.InfoF("Checking %d families", len(families))
+			for i, task := range tasks {
+				err := api.ProvisionTags(task, tagsRequest)
+				if err != nil {
+					return err
+				}
+
+				lg.InfoF("Updated %d/%d ECS Tasks", i, len(tasks))
+
+				if err != nil {
+					panic("Was not able to tag log group")
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func AddTagsSecrets(config ModifyTagsConfig) error {
+	for region, perRegionTags := range config.PerRegion {
+
+		api := clients.SecretsmanagerAPINew(&region, nil)
+
+		secrets, err := api.YieldSecrets(&secretsmanager.ListSecretsInput{}, func(a any) error { return nil })
+		if err != nil {
+			return err
+		}
+		for i, secret := range secrets {
+
+			tagsMap := map[string]*string{}
+			for keySrc, valueSrc := range perRegionTags {
+				tagsMap[keySrc] = &valueSrc
+			}
+			err := api.ProvisionTags(secret, tagsMap)
+			if err != nil {
+				return err
+			}
+
+			lg.InfoF("Updated %d/%d resources", i, len(secrets))
+
+			if err != nil {
+				panic("Was not able to tag resource")
+			}
+
+		}
+	}
+	return nil
+}
+
+func AddTagsCloudwatchAlarms(config ModifyTagsConfig) error {
+	api := clients.CloudwatchAPINew(&config.Region, nil)
+	objects := make([]any, 0)
+	err := api.GetMetricAlarms(clients.AggregatorInitializer(&objects), nil)
 	if err != nil {
 		return err
 	}
-	for _, cluster := range clusters {
-		tasks, err := api.GetTasks(&ecs.ListTasksInput{Cluster: cluster.ClusterArn})
+
+	tagsRequest := map[string]*string{}
+	for keySrc, valueSrc := range config.AddTags {
+		tagsRequest[keySrc] = &valueSrc
+	}
+
+	//lg.InfoF("Checking %d families", len(families))
+	for i, anyObject := range objects {
+		Object, ok := anyObject.(*cloudwatch.MetricAlarm)
+		if !ok {
+			panic("Wrong cast")
+		}
+
+		lg.InfoF("Updated %d/%d alarms", i, len(objects))
+
+		err := api.ProvisionTags(Object, tagsRequest)
+		if err != nil {
+			panic("Was not able to tag alarm")
+		}
+	}
+	return nil
+}
+
+func AddTagsDynamoDBTables(config ModifyTagsConfig) error {
+	for region, perRegionTags := range config.PerRegion {
+		api := clients.DynamoDBAPINew(&region, nil)
+
+		tables, err := api.GetTables(nil)
 		if err != nil {
 			return err
 		}
 
 		tagsRequest := map[string]*string{}
-		for keySrc, valueSrc := range config.AddTags {
+		for keySrc, valueSrc := range perRegionTags {
 			tagsRequest[keySrc] = &valueSrc
 		}
 
 		//lg.InfoF("Checking %d families", len(families))
-		for i, task := range tasks {
-			err := api.ProvisionTags(task, tagsRequest)
+		for i, table := range tables {
+			lg.InfoF("Updated %d/%d DynamoDB Tables", i, len(tables))
+
+			err := api.ProvisionTags(table, tagsRequest)
 			if err != nil {
-				return err
+				panic("Was not able to tag DynamoDB Table")
 			}
+		}
+	}
+	return nil
+}
 
-			lg.InfoF("Updated %d/%d ECS Tasks", i, len(tasks))
+func AddTagsElasticacheClusters(config ModifyTagsConfig) error {
+	for region, perRegionTags := range config.PerRegion {
+		api := clients.ElasticacheAPINew(&region, nil)
 
+		clusters, err := api.GetCacheClusters(nil)
+		if err != nil {
+			return err
+		}
+
+		tagsRequest := map[string]*string{}
+		for keySrc, valueSrc := range perRegionTags {
+			tagsRequest[keySrc] = &valueSrc
+		}
+
+		//lg.InfoF("Checking %d families", len(families))
+		for i, cluster := range clusters {
+			lg.InfoF("Updated %d/%d Elasticache Clusters", i, len(clusters))
+
+			err := api.ProvisionTags(cluster, tagsRequest)
 			if err != nil {
-				panic("Was not able to tag log group")
+				panic("Was not able to tag DynamoDB Table")
 			}
 		}
 	}

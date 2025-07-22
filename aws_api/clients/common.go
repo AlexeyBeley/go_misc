@@ -31,6 +31,9 @@ func CallbackEcho(Something any) error {
 
 var lg = &(logger.Logger{})
 
+func IntPtr(i int) *int {
+	return &i
+}
 func Int32Ptr(i int32) *int32 {
 	return &i
 }
