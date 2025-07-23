@@ -24,14 +24,15 @@ import (
 )
 
 type AWSTCPDumpConfig struct {
-	Region                   string
-	Subnets                  []string
-	InterfacesOutputFilePath string
-	LogOutputFilePath        string
-	IamDataDirPath           string
-	AWSProfile               string
-	ProcessedOutputFilePath  string
-	LiveRecording            bool
+	Region                   string   `json:"Region"`
+	Subnets                  []string `json:"Subnets"`
+	AWSProfile               string   `json:"AWSProfile"`
+	InterfacesOutputFilePath string   `json:"InterfacesOutputFilePath"`
+	LogOutputFilePath        string   `json:"LogOutputFilePath"`
+	ProcessedOutputFilePath  string   `json:"ProcessedOutputFilePath"`
+	IamDataDirPath           string   `json:"IamDataDirPath"`
+	LiveRecording            bool     `json:"LiveRecording"`
+	AddrFilters              []string `json:"AddrFilters"`
 }
 
 type AWSTCPDump struct {
@@ -44,7 +45,6 @@ type AWSTCPDump struct {
 }
 
 func AWSTCPDumpNew() (*AWSTCPDump, error) {
-
 	new := &AWSTCPDump{}
 	new.initConfig()
 
@@ -54,7 +54,16 @@ func AWSTCPDumpNew() (*AWSTCPDump, error) {
 
 	return new, nil
 }
-
+func (AwsTCPDump *AWSTCPDump) LoadConfig(filePath string) (*AWSTCPDumpConfig, error) {
+	fileString, err := os.ReadFile(filePath)
+	_ = fileString
+	// todo:
+	if err != nil {
+		return nil, err
+	}
+	config := &AWSTCPDumpConfig{}
+	return config, nil
+}
 func (AwsTCPDump *AWSTCPDump) ParseArgs(flagset *flag.FlagSet, args []string) (*AWSTCPDumpConfig, error) {
 	var region *string
 	if slices.Contains(args, "-region") {
@@ -84,11 +93,18 @@ func (AwsTCPDump *AWSTCPDump) ParseArgs(flagset *flag.FlagSet, args []string) (*
 		live = new(bool)
 	}
 
-	var config *string
-	if slices.Contains(args, "-config") {
-		config = flagset.String("confg", "", "Configuration file path")
+	var filterAddrs *string
+	if slices.Contains(args, "-addr") {
+		filterAddrs = flagset.String("addr", "", "Filter addresses")
 	} else {
-		config = new(string)
+		filterAddrs = new(string)
+	}
+
+	var configPath *string
+	if slices.Contains(args, "-config") {
+		configPath = flagset.String("confg", "", "Configuration file path")
+	} else {
+		configPath = clients.StrPtr("/opt/aws_api/tcpdump/data/tcpdump.conf")
 	}
 
 	err := flagset.Parse(args)
@@ -96,42 +112,36 @@ func (AwsTCPDump *AWSTCPDump) ParseArgs(flagset *flag.FlagSet, args []string) (*
 		return nil, err
 	}
 
-	ret := &AWSTCPDumpConfig{}
-
-	if *config != "" {
-		jsonString, err := os.ReadFile(*config)
-
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal([]byte(jsonString), config)
-		if err != nil {
-			return nil, err
-		}
+	config, err := AwsTCPDump.LoadConfig(*configPath)
+	if err != nil {
+		return nil, err
 	}
 
-	var subnetsSlice []string
 	if *subnetsString == "" {
-		subnetsSlice = []string{}
+		config.Subnets = []string{}
 	} else {
-		subnetsSlice = strings.Split(*subnetsString, ",")
+		config.Subnets = strings.Split(*subnetsString, ",")
 	}
 
 	if *region != "" {
-		ret.Region = *region
+		config.Region = *region
 	}
-	if subnetsSlice != nil {
-		ret.Subnets = subnetsSlice
+
+	if *filterAddrs == "" {
+		config.AddrFilters = []string{}
+	} else {
+		config.AddrFilters = strings.Split(*filterAddrs, ",")
 	}
+
 	if *profile != "" {
-		ret.AWSProfile = *profile
+		config.AWSProfile = *profile
 	}
 
 	if *live {
-		ret.LiveRecording = *live
+		config.LiveRecording = *live
 	}
 
-	return ret, nil
+	return config, nil
 }
 
 func (AwsTCPDump *AWSTCPDump) initConfig() error {
@@ -169,7 +179,7 @@ func (AwsTCPDump *AWSTCPDump) initConfig() error {
 	}
 
 	if AwsTCPDump.Config.LogOutputFilePath == "" {
-		AwsTCPDump.Config.LogOutputFilePath = "/opt/aws_api/tcpdump/output/tcpdump_log.log"
+		AwsTCPDump.Config.LogOutputFilePath = "/opt/aws_api/tcpdump/output/tcpdump.log"
 
 	}
 
