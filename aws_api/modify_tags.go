@@ -6,7 +6,6 @@ import (
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
-	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
@@ -545,8 +544,8 @@ func CheckTagsECSTaskdefinitions(config ModifyTagsConfig) error {
 
 func AddTagsCloudwatchLogGroups(config ModifyTagsConfig) error {
 	api := clients.CloudwatchLogsAPINew(&config.Region, nil)
-	objects := make([]any, 0)
-	err := api.GetLogGroups(clients.AggregatorInitializer(&objects), nil)
+
+	objects, err := api.GetLogGroups(nil)
 	if err != nil {
 		return err
 	}
@@ -557,11 +556,7 @@ func AddTagsCloudwatchLogGroups(config ModifyTagsConfig) error {
 	}
 
 	//lg.InfoF("Checking %d families", len(families))
-	for i, anyLogGroup := range objects {
-		logGroup, ok := anyLogGroup.(*cloudwatchlogs.LogGroup)
-		if !ok {
-			panic("Wrong cast")
-		}
+	for i, logGroup := range objects {
 
 		lg.InfoF("Updated %d/%d log groups", i, len(objects))
 

@@ -25,18 +25,22 @@ func LambdaAPINew(region *string, profileName *string) *LambdaAPI {
 	return &ret
 }
 
-func (api *LambdaAPI) YieldFunctions(callback GenericCallback, Input *lambda.ListFunctionsInput) error {
+func (api *LambdaAPI) YieldFunctions(callback GenericCallbackNG, Input *lambda.ListFunctionsInput) error {
 	var callbackErr error
 	pageNum := 0
-	err := api.svc.ListFunctionsPages(Input, func(page *lambda.ListFunctionsOutput, notHasNextPage bool) bool {
+	err := api.svc.ListFunctionsPages(Input, func(page *lambda.ListFunctionsOutput, lastPage bool) bool {
+
+		lg.DebugF("ListFunctionsPages page: %d", pageNum)
 		pageNum++
+
 		for _, object := range page.Functions {
 
-			if callbackErr = callback(object); callbackErr != nil {
+			if continuePagination, callbackErrTmp := callback(object); !continuePagination {
+				callbackErr = callbackErrTmp
 				return false
 			}
 		}
-		return !notHasNextPage
+		return !lastPage
 	})
 	if callbackErr != nil {
 		return callbackErr
@@ -47,7 +51,7 @@ func (api *LambdaAPI) YieldFunctions(callback GenericCallback, Input *lambda.Lis
 func (api *LambdaAPI) GetFunctions(Input *lambda.ListFunctionsInput) ([]*lambda.FunctionConfiguration, error) {
 	objects := make([]any, 0)
 
-	err := api.YieldFunctions(AggregatorInitializer(&objects), nil)
+	err := api.YieldFunctions(AggregatorInitializerNG(&objects), nil)
 	ret := []*lambda.FunctionConfiguration{}
 	for _, objAny := range objects {
 		obj, ok := objAny.(*lambda.FunctionConfiguration)

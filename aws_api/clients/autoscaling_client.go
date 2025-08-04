@@ -32,7 +32,9 @@ func (api *AutoscalingAPI) DescribeAutoScalingGroups(callback GenericCallback, I
 	err := api.svc.DescribeAutoScalingGroupsPages(Input, func(page *autoscaling.DescribeAutoScalingGroupsOutput, notHasNextPage bool) bool {
 		pageNum++
 		for _, obj := range page.AutoScalingGroups {
-			if callbackErr = callback(obj); callbackErr != nil {
+			err := callback(obj)
+			if err != nil {
+				callbackErr = err
 				return false
 			}
 		}

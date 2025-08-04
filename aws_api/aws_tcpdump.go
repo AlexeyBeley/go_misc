@@ -435,10 +435,13 @@ func PrintInterfaceDescription(config *AWSTCPDumpConfig, interfaceId *string) er
 // Log stream per inteface with interface id in the name.
 // ${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}
 func (awsTCPDump *AWSTCPDump) StartInterfaceRecording(workPool *chan bool, interId, subnetId, subnetLogGroupName string, ctx *context.Context) error {
-	svc := clients.GetCloudwatchLogClient(&awsTCPDump.Config.Region)
-	limit := int64(50)
+
+	api := clients.CloudwatchLogsAPINew(&awsTCPDump.Config.Region, nil)
 	objects := make([]any, 0)
-	err := clients.GetLogStreamsRaw(svc, &limit, &subnetLogGroupName, &interId, clients.AggregatorInitializer(&objects))
+	err := api.YieldCloudwatchLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
+		LogGroupName:        &subnetLogGroupName,
+		LogStreamNamePrefix: &interId,
+	}, clients.AggregatorInitializerNG(&objects))
 	if err != nil {
 		return err
 	}

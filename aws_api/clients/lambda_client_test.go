@@ -28,3 +28,7 @@ func TestGetFunctions(t *testing.T) {
 		}
 	})
 }
+
+var TestGenericCallback = func(any) (bool, error) {
+	return true, nil
+}

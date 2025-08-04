@@ -169,58 +169,74 @@ func YieldCloudwatchLogStream(region, logGroupName, streamName, nextToken *strin
 
 type StringCallback func(string) error
 
-func GetLogStreamsRaw(svc *cloudwatchlogs.CloudWatchLogs, limit *int64, logGroupName, LogStreamNamePrefix *string, callback GenericCallback) error {
+func (api *CloudwatchLogsAPI) YieldCloudwatchLogStreams(input *cloudwatchlogs.DescribeLogStreamsInput, callback GenericCallbackNG) error {
+
+	if *input.LogGroupName == "" {
+		return fmt.Errorf("you must supply a log group name: '%s'", *input.LogGroupName)
+	}
+	if input.Limit == nil {
+		input.Limit = Int64Ptr(50)
+	}
+
 	var callbackErr error
 	pageNum := 0
-	err := svc.DescribeLogStreamsPages(&cloudwatchlogs.DescribeLogStreamsInput{
-		Limit:               limit,
-		LogGroupName:        logGroupName,
-		LogStreamNamePrefix: LogStreamNamePrefix,
-	}, func(page *cloudwatchlogs.DescribeLogStreamsOutput, notHasNextPage bool) bool {
+	err := api.svc.DescribeLogStreamsPages(input, func(page *cloudwatchlogs.DescribeLogStreamsOutput, notHasNextPage bool) bool {
 		// stop when returns False
+		lg.DebugF("DescribeLogStreamsPages, page %d", pageNum)
 		pageNum++
 		for _, logStream := range page.LogStreams {
-			if callbackErr = callback(logStream); callbackErr != nil {
+			if continuePagination, err := callback(logStream); !continuePagination {
+				callbackErr = err
 				return false
 			}
 		}
 		return !notHasNextPage
 	})
+
+	if err != nil {
+		return err
+	}
+
 	if callbackErr != nil {
 		return callbackErr
 	}
 
-	return err
+	return nil
 }
 
-func YieldCloudwatchLogStreams(region, logGroupName string, callback GenericCallback) error {
-	limit := int64(50)
+func (api *CloudwatchLogsAPI) YieldStreamEvents(input *cloudwatchlogs.GetLogEventsInput, callback GenericCallbackNG) error {
 
-	if logGroupName == "" {
-		return fmt.Errorf("you must supply a log group name: '%s'", logGroupName)
+	if *input.LogGroupName == "" {
+		return fmt.Errorf("you must supply a log group name: '%s'", *input.LogGroupName)
+	}
+	if input.Limit == nil {
+		input.Limit = Int64Ptr(10000)
 	}
 
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-		Config:            aws.Config{Region: &region},
-	}))
-	svc := cloudwatchlogs.New(sess)
-	err := GetLogStreamsRaw(svc, &limit, &logGroupName, nil, callback)
+	var callbackErr error
+	pageNum := 0
+	err := api.svc.GetLogEventsPages(input, func(page *cloudwatchlogs.GetLogEventsOutput, notHasNextPage bool) bool {
+		// stop when returns False
+		lg.DebugF("GetLogEventsPages, page %d", pageNum)
+		pageNum++
+		for _, event := range page.Events {
+			if continuePagination, err := callback(event); !continuePagination {
+				callbackErr = err
+				return false
+			}
+		}
+		return !notHasNextPage
+	})
+
 	if err != nil {
-		fmt.Println("Got error getting log events:")
-		fmt.Println(err)
 		return err
 	}
 
-	return nil
-}
+	if callbackErr != nil {
+		return callbackErr
+	}
 
-func LogStreamsCacheCallback(LogStream *cloudwatchlogs.LogStream) error {
 	return nil
-}
-
-func LogStreamsCache(region, logGroupName string) error {
-	return YieldCloudwatchLogStreams(region, logGroupName, Counter())
 }
 
 func (api *CloudwatchLogsAPI) GetLogGroup(name *string) (logGroup *cloudwatchlogs.LogGroup, err error) {
@@ -229,20 +245,25 @@ func (api *CloudwatchLogsAPI) GetLogGroup(name *string) (logGroup *cloudwatchlog
 	if len(response.LogGroups) > 1 {
 		return logGroup, fmt.Errorf("found %d log groups by name: %s", len(response.LogGroups), *name)
 	}
+	if err != nil {
+		return nil, err
+	}
+
 	if len(response.LogGroups) == 1 {
 		return response.LogGroups[0], nil
 	}
 	return logGroup, err
 }
 
-func (api *CloudwatchLogsAPI) GetLogGroups(callback GenericCallback, Input *cloudwatchlogs.DescribeLogGroupsInput) error {
+func (api *CloudwatchLogsAPI) YieldLogGroups(callback GenericCallbackNG, Input *cloudwatchlogs.DescribeLogGroupsInput) error {
 	var callbackErr error
 	pageNum := 0
 	err := api.svc.DescribeLogGroupsPages(Input, func(page *cloudwatchlogs.DescribeLogGroupsOutput, notHasNextPage bool) bool {
 
 		pageNum++
 		for _, logGroup := range page.LogGroups {
-			if callbackErr = callback(logGroup); callbackErr != nil {
+			if continuePagination, err := callback(logGroup); !continuePagination {
+				callbackErr = err
 				return false
 			}
 		}
@@ -252,6 +273,24 @@ func (api *CloudwatchLogsAPI) GetLogGroups(callback GenericCallback, Input *clou
 		return callbackErr
 	}
 	return err
+}
+
+func (api *CloudwatchLogsAPI) GetLogGroups(Input *cloudwatchlogs.DescribeLogGroupsInput) ([]*cloudwatchlogs.LogGroup, error) {
+	objects := []any{}
+	err := api.YieldLogGroups(AggregatorInitializerNG(&objects), nil)
+	if err != nil {
+		return nil, err
+	}
+	logGroups := []*cloudwatchlogs.LogGroup{}
+	for _, objAny := range objects {
+		obj, ok := objAny.(*cloudwatchlogs.LogGroup)
+		if !ok {
+			return nil, fmt.Errorf("cast error: %v", objAny)
+		}
+		logGroups = append(logGroups, obj)
+	}
+
+	return logGroups, nil
 }
 
 func (api *CloudwatchLogsAPI) GetTags(Input *cloudwatchlogs.ListTagsForResourceInput) (map[string]*string, error) {
@@ -286,4 +325,14 @@ func (api *CloudwatchLogsAPI) ProvisionTags(targetGroup *cloudwatchlogs.LogGroup
 		return err
 	}
 	return err
+}
+
+func (api *CloudwatchLogsAPI) DisposeStream(Input *cloudwatchlogs.DeleteLogStreamInput) (*cloudwatchlogs.DeleteLogStreamOutput, error) {
+	lg.InfoF("Disposing log stream %s -> %s", *Input.LogGroupName, *Input.LogStreamName)
+	response, err := api.svc.DeleteLogStream(Input)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }

@@ -33,16 +33,6 @@ func TestFetchCloudwatchLogStream(t *testing.T) {
 	})
 }
 
-func TestLogStreamsCache(t *testing.T) {
-	t.Run("Valid run", func(t *testing.T) {
-		realConfig := loadRealConfig()
-		err := LogStreamsCache(realConfig.Region, "test")
-		if err != nil {
-			t.Errorf("%v", err)
-		}
-	})
-}
-
 func TestYieldCloudwatchLogStream(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		var epochStartSeconds, epochEndSeconds int64
@@ -97,8 +87,7 @@ func TestGetLogGroups(t *testing.T) {
 		realConfig := loadRealConfig()
 		api := CloudwatchLogsAPINew(&realConfig.Region, nil)
 
-		objects := make([]any, 0)
-		err := api.GetLogGroups(CallbackEcho, nil)
+		objects, err := api.GetLogGroups(nil)
 		if err != nil {
 			t.Errorf("%v", err)
 		}
