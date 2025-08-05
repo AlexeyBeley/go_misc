@@ -90,9 +90,9 @@ func (cleaner *Cleaner) WorkLogGroupCleanerGenerator(asyncOrchestrator *AsyncOrc
 			return nil, err
 		}
 		for _, logGroup := range logGroups {
-			if *logGroup.LogGroupName != "/aws/lambda/initiator_outsource-eu" {
-				continue
-			}
+			//if *logGroup.LogGroupName != "" {
+			//		continue
+			//	}
 			var RetentionInDays string
 			if logGroup.RetentionInDays == nil {
 				RetentionInDays = "Nil"
