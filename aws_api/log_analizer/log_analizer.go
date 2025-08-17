@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/AlexeyBeley/go_common/logger"
+	actionManager "github.com/AlexeyBeley/go_misc/action_manager"
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/lambda"
@@ -269,45 +269,15 @@ func (awsLogAnalizer *AWSLogAnalizer) GetLambdaPointInTimeLogsFromLogStream(logs
 	return nil, nil
 }
 
-type ActionManager struct {
-	ActionMap map[string]any
-}
-
-func (AwsLogAnalizer *AWSLogAnalizer) GenerateActionManager() (*ActionManager, error) {
-	ret := &ActionManager{ActionMap: map[string]any{"GetLamdaLogs": AwsLogAnalizer.LambdaLogsAction,
-		"GetAllLamdasLogs": AwsLogAnalizer.GetAllLamdasLogsAction,
-	}}
-	return ret, nil
-}
-
-func (actionManager *ActionManager) RunAction(actionName *string) error {
-	fn, ok := actionManager.ActionMap[*actionName]
-	if !ok {
-		return fmt.Errorf("action '%s' not found", *actionName)
+func (AwsLogAnalizer *AWSLogAnalizer) GenerateActionManager() (*actionManager.ActionManager, error) {
+	actionManager, err := actionManager.ActionManagerNew()
+	if err != nil {
+		return nil, err
 	}
+	(*actionManager).ActionMap = map[string]any{"GetLamdaLogs": AwsLogAnalizer.LambdaLogsAction,
+		"GetAllLamdasLogs": AwsLogAnalizer.GetAllLamdasLogsAction}
 
-	funcValue := reflect.ValueOf(fn)
-	if funcValue.Kind() != reflect.Func {
-		return fmt.Errorf("'%s' is not a function", *actionName)
-	}
-
-	in := make([]reflect.Value, 0)
-	results := funcValue.Call(in)
-	if len(results) != 1 {
-		return fmt.Errorf("only result acceptable is 'error', recived %d results", len(results))
-	}
-
-	result := results[0].Interface()
-	if result == nil {
-		return nil
-	}
-
-	err, ok := result.(error)
-	if !ok {
-		return fmt.Errorf("action '%s' result expected to be 'error' but received %v", *actionName, result)
-	}
-
-	return err
+	return actionManager, nil
 }
 
 func (AwsLogAnalizer *AWSLogAnalizer) GetAllLamdasLogsAction() error {
@@ -345,9 +315,9 @@ func SaveAllLamdasLogs(logs_api *clients.CloudwatchLogsAPI, input *LambdaLogsAct
 			return false, fmt.Errorf("cast error: %v", streamAny)
 		}
 
-		// Todo: remove 
+		// Todo: remove
 		// Skip old streams
-		if *logStream.FirstEventTimestamp < 1754334000000-30*60*1000{
+		if *logStream.FirstEventTimestamp < 1754334000000-30*60*1000 {
 			return true, nil
 		}
 

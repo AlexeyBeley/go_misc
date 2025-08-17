@@ -15,9 +15,12 @@ import (
 	"time"
 	"unicode"
 
+	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types"
 	"github.com/google/uuid"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/build"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/work"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/workitemtracking"
 )
@@ -387,9 +390,6 @@ func DownloadAllWits(config Configuration, dstFilePath string) error {
 		return err
 	}
 
-	//todo: remove
-	//WitIds = WitIds[:400]
-	//todo: end remove
 	BulckSize := 50
 	WitCount := len(WitIds)
 	channelsCount := WitCount / BulckSize
@@ -919,4 +919,268 @@ func getWorker(uniqueNamePart string) string {
 	lastNameRunes[0] = unicode.ToUpper(lastNameRunes[0])
 	return string(nameRunes) + " " + string(lastNameRunes)
 
+}
+
+type AzureDevopsAPI struct {
+	GitClient     GitClient
+	BuildClient   BuildClient
+	Configuration Configuration
+}
+
+func AzureDevopsAPINew(config Configuration) (*AzureDevopsAPI, error) {
+
+	organizationUrl := "https://dev.azure.com/" + config.OrganizationName // todo: replace value with your organization url
+
+	// Create a connection to your organization
+	connection := azuredevops.NewPatConnection(organizationUrl, config.PersonalAccessToken)
+
+	ctx := context.Background()
+
+	ret := &AzureDevopsAPI{}
+
+	gitClient, err := GitClientNew(config, ctx, connection)
+	if err != nil {
+		return nil, err
+	}
+	ret.GitClient = *gitClient
+
+	BuildClient, err := BuildClientNew(config, ctx, connection)
+	if err != nil {
+		return nil, err
+	}
+	ret.BuildClient = *BuildClient
+
+	return ret, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetRepositories() ([]git.GitRepository, error) {
+	allRepositories, err := azureDevopsAPI.GitClient.GetRepositories()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allRepositories) == 0 {
+		return nil, fmt.Errorf("no repositories found in project '%s'", azureDevopsAPI.Configuration.ProjectName)
+	}
+
+	return allRepositories, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetPipelineDefinitions() ([]build.BuildDefinitionReference, error) {
+	Definitions, err := azureDevopsAPI.BuildClient.GetDefinitions()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(Definitions) == 0 {
+		return nil, fmt.Errorf("no repositories found in project '%s'", azureDevopsAPI.Configuration.ProjectName)
+	}
+
+	return Definitions, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetPipelineDefinition() ([]build.BuildDefinitionReference, error) {
+	Definitions, err := azureDevopsAPI.BuildClient.GetDefinitions()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, Definition := range Definitions {
+		DefinitionFull, err := azureDevopsAPI.BuildClient.GetDefinition(Definition.Id)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("DefinitionFull: %v", DefinitionFull)
+	}
+
+	return Definitions, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) ProvisionWitFromDict(requestDict *(map[string]string)) error {
+	// provision_work_item_from_dict
+
+	if (*requestDict)["Id"] == "-1" {
+		return nil
+	}
+
+	return azureDevopsAPI.CreateWit(requestDict)
+
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) CreateWit(requestDict *(map[string]string)) error {
+	req, err := azureDevopsAPI.GenerateCreateWitRequest(requestDict)
+	if err != nil {
+		log.Printf("received error in Generate Create Wit Request: %v", err)
+		return err
+	}
+	client := getClient()
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("received error in HTTP clinet request: %v", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check the status code
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP status error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	// Decode the JSON response
+	//var queryResult witWorkItemQueryResult
+	var wit workitemtracking.WorkItem
+	err = json.NewDecoder(resp.Body).Decode(&wit)
+	if err != nil {
+		return err
+	}
+	(*requestDict)["Id"] = strconv.Itoa(*wit.Id)
+
+	return nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GenerateCreateWitRequest(requestDict *(map[string]string)) (*http.Request, error) {
+	/*
+		dictRequest["Id"] = wobject.Id
+		dictRequest["ParentID"] = wobject.ParentID
+		dictRequest["Priority"] = strconv.Itoa(wobject.Priority)
+		dictRequest["Title"] = wobject.Title
+		dictRequest["Description"] = wobject.Description
+		dictRequest["LeftTime"] = strconv.Itoa(wobject.LeftTime)
+		dictRequest["InvestedTime"] = strconv.Itoa(wobject.InvestedTime)
+		dictRequest["WorkerID"] = wobject.WorkerID
+		dictRequest["ChildrenIDs"] = strings.Join(*wobject.ChildrenIDs, ",")
+		dictRequest["Sprint"] = wobject.Sprint
+		dictRequest["Status"] = wobject.Status
+		dictRequest["Type"] = wobject.Type
+	*/
+
+	if value, err := strconv.Atoi((*requestDict)["Priority"]); err != nil || value == -1 {
+		return nil, fmt.Errorf("creating Wobject has malformed Prioriy: %v, %v", value, err)
+	}
+
+	ctx := context.Background()
+	postList := []map[string]string{}
+
+	var witUrlType string
+	switch {
+	case (*requestDict)["Type"] == "UserStory":
+		witUrlType = "$User%20Story"
+	case (*requestDict)["Type"] == "Task" || (*requestDict)["Type"] == "Bug":
+		witUrlType = "$" + (*requestDict)["Type"]
+	default:
+		return nil, fmt.Errorf("unknown WIT Type: %s", (*requestDict)["Type"])
+	}
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.AreaPath",
+		"value": (*requestDict)["AreaPath"],
+	})
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.Title",
+		"value": (*requestDict)["Title"],
+	})
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.Description",
+		"value": (*requestDict)["Description"],
+	})
+
+	iteration, err := azureDevopsAPI.GetIteration()
+	if err != nil {
+		return nil, err
+	}
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.IterationPath",
+		"value": *iteration.Path,
+	})
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/Microsoft.VSTS.Common.Priority",
+		"value": (*requestDict)["Priority"],
+	})
+
+	err = fillCreateWitRequestTimes(&postList, requestDict)
+	if err != nil {
+		return nil, err
+	}
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.AssignedTo",
+		"value": (*requestDict)["WorkerID"],
+	})
+
+	fmt.Printf("Creating new Azure Devops WorkITem  : %v\n", requestDict)
+
+	postData, err := json.Marshal(postList)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling JSON: %v", err)
+	}
+	req, err := azureDevopsAPI.CreateRequest(ctx, fmt.Sprintf("wit/workitems/%s?api-version=7.0", witUrlType), http.MethodPost, bytes.NewBuffer(postData), "application/json-patch+json")
+
+	return req, err
+}
+func (azureDevopsAPI *AzureDevopsAPI) GetIteration() (iteration work.TeamSettingsIteration, err error) {
+	WorkClient, ctx, err := azureDevopsAPI.GetWorkClientAndCtx()
+
+	if err != nil {
+		return iteration, err
+	}
+
+	TeamSettingsIterations, err := WorkClient.GetTeamIterations(ctx, work.GetTeamIterationsArgs{Project: &(azureDevopsAPI.Configuration.ProjectName)})
+
+	if TeamSettingsIterations == nil {
+		return iteration, err
+	}
+	for _, TeamSettingsIteration := range *TeamSettingsIterations {
+		if *TeamSettingsIteration.Name == azureDevopsAPI.Configuration.SprintName {
+			return TeamSettingsIteration, nil
+		}
+	}
+	return iteration, fmt.Errorf("was not able to find Iteration by name: %s", azureDevopsAPI.Configuration.SprintName)
+}
+func (azureDevopsAPI *AzureDevopsAPI) CreateRequest(ctx context.Context, RequestPath string, httpMethod string, body io.Reader, contentType string) (*http.Request, error) {
+
+	requestUrl := "https://dev.azure.com/" + azureDevopsAPI.Configuration.OrganizationName + "/" + azureDevopsAPI.Configuration.ProjectName + "/_apis/" + RequestPath
+	AuthHeaderValue := "Basic " + basicAuth(azureDevopsAPI.Configuration.PersonalAccessToken)
+
+	req, err := http.NewRequestWithContext(ctx, httpMethod, requestUrl, body)
+	if err != nil {
+		return req, err
+	}
+
+	// Set the Authorization header
+	req.Header.Set("Authorization", AuthHeaderValue)
+	req.Header.Set("Content-Type", contentType)
+	return req, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetWorkClientAndCtx() (work.Client, context.Context, error) {
+	organizationUrl := "https://dev.azure.com/" + azureDevopsAPI.Configuration.OrganizationName
+
+	// Create a connection to your organization
+	connection := azuredevops.NewPatConnection(organizationUrl, azureDevopsAPI.Configuration.PersonalAccessToken)
+
+	ctx := context.Background()
+
+	// Create a client to interact with the Work area
+	Client, err := work.NewClient(ctx, connection)
+
+	if err != nil {
+		return Client, ctx, err
+	}
+
+	return Client, ctx, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj human_api_types.Wobject) error {
+	return nil
 }

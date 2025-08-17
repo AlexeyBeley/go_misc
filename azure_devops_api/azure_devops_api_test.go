@@ -9,7 +9,7 @@ import (
 
 func loadRealConfig() Configuration {
 	os.Getenv("CONFIG_PATH")
-	conf_path := "/tmp/azure_devops_api_configuration_values.json"
+	conf_path := "/opt/azure_devops_api/configuration.json"
 	config, err := LoadConfig(conf_path)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -76,5 +76,58 @@ func TestGetIteration(t *testing.T) {
 		if len(ret.Id) == 0 {
 			t.Errorf("%v", ret)
 		}
+	})
+}
+
+func TestGetRepositories(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		api, err := AzureDevopsAPINew(realConfig)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+
+		ret, err := api.GetRepositories()
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+
+		for _, rep := range ret {
+			fmt.Printf("Repo: %s\n", *rep.Name)
+		}
+	})
+}
+
+func TestGetPipelineDefinitions(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		api, err := AzureDevopsAPINew(realConfig)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+
+		ret, err := api.GetPipelineDefinitions()
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		_ = ret
+
+	})
+}
+
+func TestGetPipelineDefinition(t *testing.T) {
+	t.Run("Valid run", func(t *testing.T) {
+		realConfig := loadRealConfig()
+		api, err := AzureDevopsAPINew(realConfig)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+
+		ret, err := api.GetPipelineDefinition()
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		_ = ret
+
 	})
 }
