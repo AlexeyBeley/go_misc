@@ -5,7 +5,11 @@ import (
 	"log"
 	"os"
 	"testing"
+
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
 )
+
+var GlobalAzureDevopsAPIConfigurationFilePath = "/opt/azure_devops_api/configuration.json"
 
 func loadRealConfig() Configuration {
 	os.Getenv("CONFIG_PATH")
@@ -81,8 +85,8 @@ func TestGetIteration(t *testing.T) {
 
 func TestGetRepositories(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
-		realConfig := loadRealConfig()
-		api, err := AzureDevopsAPINew(realConfig)
+
+		api, err := AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
@@ -100,8 +104,7 @@ func TestGetRepositories(t *testing.T) {
 
 func TestGetPipelineDefinitions(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
-		realConfig := loadRealConfig()
-		api, err := AzureDevopsAPINew(realConfig)
+		api, err := AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
@@ -117,8 +120,8 @@ func TestGetPipelineDefinitions(t *testing.T) {
 
 func TestGetPipelineDefinition(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
-		realConfig := loadRealConfig()
-		api, err := AzureDevopsAPINew(realConfig)
+
+		api, err := AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
 		if err != nil {
 			log.Fatalf("%v", err)
 		}

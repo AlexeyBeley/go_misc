@@ -15,7 +15,9 @@ import (
 	"time"
 	"unicode"
 
-	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types"
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
+	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
+	logger "github.com/AlexeyBeley/go_misc/logger"
 	"github.com/google/uuid"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/build"
@@ -24,6 +26,8 @@ import (
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/work"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/workitemtracking"
 )
+
+var lg = logger.Logger{Level: logger.INFO}
 
 type Configuration struct {
 	PersonalAccessToken string `json:"PersonalAccessToken"`
@@ -924,11 +928,12 @@ func getWorker(uniqueNamePart string) string {
 type AzureDevopsAPI struct {
 	GitClient     GitClient
 	BuildClient   BuildClient
-	Configuration Configuration
+	GraphClient   GraphClient
+	Configuration *Configuration
 }
 
-func AzureDevopsAPINew(config Configuration) (*AzureDevopsAPI, error) {
-
+func AzureDevopsAPINew(options ...config_pol.Option) (*AzureDevopsAPI, error) {
+	config := &Configuration{}
 	organizationUrl := "https://dev.azure.com/" + config.OrganizationName // todo: replace value with your organization url
 
 	// Create a connection to your organization
@@ -937,6 +942,10 @@ func AzureDevopsAPINew(config Configuration) (*AzureDevopsAPI, error) {
 	ctx := context.Background()
 
 	ret := &AzureDevopsAPI{}
+
+	for _, option := range options {
+		option(ret, config)
+	}
 
 	gitClient, err := GitClientNew(config, ctx, connection)
 	if err != nil {
@@ -950,7 +959,22 @@ func AzureDevopsAPINew(config Configuration) (*AzureDevopsAPI, error) {
 	}
 	ret.BuildClient = *BuildClient
 
+	GraphClient, err := GraphClientNew(config, ctx, connection)
+	if err != nil {
+		return nil, err
+	}
+	ret.GraphClient = *GraphClient
+
 	return ret, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) SetConfiguration(Config any) error {
+	AzureDevopsAPIConfig, ok := Config.(*Configuration)
+	if !ok {
+		return fmt.Errorf("was not able to convert %v to HumanAPIConfig", Config)
+	}
+	azureDevopsAPI.Configuration = AzureDevopsAPIConfig
+	return nil
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GetRepositories() ([]git.GitRepository, error) {
@@ -1181,6 +1205,23 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorkClientAndCtx() (work.Client, contex
 	return Client, ctx, nil
 }
 
-func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj human_api_types.Wobject) error {
+func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wobject) error {
+
+	lg.InfoF("test")
 	return nil
+
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetWorkerId(Name *string) (*string, error) {
+	users, err := azureDevopsAPI.GraphClient.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+	for _, user := range users {
+		lg.InfoF("test: %v", user)
+
+	}
+
+	return nil, nil
+
 }

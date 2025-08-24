@@ -8,8 +8,12 @@ import (
 	"testing"
 
 	"github.com/AlexeyBeley/go_misc/azure_devops_api"
-	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types"
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
+	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
 )
+
+var GlobalHumanAPIConfigurationFilePath = "/opt/human_api/human_api_config.json"
+var GlobalAzureDevopsAPIConfigurationFilePath = "/opt/azure_devops_api/configuration.json"
 
 func TestLoadConfiguration(t *testing.T) {
 	t.Run("Init test", func(t *testing.T) {
@@ -124,6 +128,23 @@ func TestDailyRoutineSubmit(t *testing.T) {
 		azure_devops_config, err := azure_devops_api.LoadConfig(config.AzureDevopsConfigurationFilePath)
 		test_check(t, err)
 		err = DailyRoutineSubmit(azure_devops_config, "/tmp/input.hapi", "/tmp/base.hapi", "/tmp/postSubmit.json")
+		test_check(t, err)
+	})
+}
+
+func TestCreateTicket(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+		ProjectManagerAPI, err := azure_devops_api.AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
+		if err != nil {
+			panic(err)
+		}
+
+		api, err := HumanAPINew(config_pol.WithConfigurationFile(&GlobalHumanAPIConfigurationFilePath), WithProjectManagerAPI(ProjectManagerAPI))
+		if err != nil {
+			panic(err)
+		}
+
+		err = api.CreateTicket("DevopsTicket", "Test", "Test description", api.Configuration.WorkerName, 1)
 		test_check(t, err)
 	})
 }

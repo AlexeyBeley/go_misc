@@ -11,10 +11,10 @@ import (
 
 type BuildClient struct {
 	Client        build.Client
-	Configuration Configuration
+	Configuration *Configuration
 }
 
-func BuildClientNew(Configuration Configuration, context context.Context, connection *azuredevops.Connection) (*BuildClient, error) {
+func BuildClientNew(Configuration *Configuration, context context.Context, connection *azuredevops.Connection) (*BuildClient, error) {
 
 	buildClient, err := build.NewClient(context, connection)
 	if err != nil {

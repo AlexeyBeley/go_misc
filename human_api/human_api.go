@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/AlexeyBeley/go_misc/azure_devops_api"
-	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types"
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
+	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
 )
 
 type Configuration struct {
@@ -730,19 +731,40 @@ func logWithLineNumber(message string) {
 }
 
 type HumanAPIConfiguration struct {
-	ApplicationRootDiriectoryPath string
-	TicketDefaultValuesFilePath   string
+	ApplicationRootDiriectoryPath string `json:"ApplicationRootDiriectoryPath,omitempty"`
+	TicketDefaultValuesFilePath   string `json:"TicketDefaultValuesFilePath,omitempty"`
+	WorkerName                    string `json:"WorkerName,omitempty"`
 }
 
 type HumanAPI struct {
-	Configuration     HumanAPIConfiguration
-	ProjectManagerAPI human_api_types.ProjectManager
+	Configuration     *HumanAPIConfiguration
+	ProjectManagerAPI *human_api_types.ProjectManager
 }
 
-func HumanAPINew() (*HumanAPI, error) {
-	Configuration := HumanAPIConfiguration{}
-	return &HumanAPI{Configuration: Configuration}, nil
+func WithProjectManagerAPI(ProjectManagerAPI human_api_types.ProjectManager) func(api config_pol.Configurable, APIConfiguration any) error {
+	return func(api config_pol.Configurable, APIConfiguration any) error {
+		humanAPI, ok := api.(*HumanAPI)
+		if !ok {
+			return fmt.Errorf("%v not HumanAPI", api)
+		}
 
+		humanAPI.ProjectManagerAPI = &ProjectManagerAPI
+		err := api.SetConfiguration(APIConfiguration)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+func HumanAPINew(options ...config_pol.Option) (*HumanAPI, error) {
+	ret := &HumanAPI{}
+	config := &HumanAPIConfiguration{}
+	for _, option := range options {
+		option(ret, config)
+	}
+
+	return ret, nil
 }
 
 func (humanAPI *HumanAPI) TicketAction() error {
@@ -753,19 +775,42 @@ func (humanAPI *HumanAPI) TicketAction() error {
 
 func (humanAPI *HumanAPI) CreateTicket(Type, Title, Description, WorkerName string, Priority int) error {
 
+	WorkerID, err := humanAPI.GetWorkerId(&WorkerName)
+	if err != nil {
+		return err
+	}
 	wobj := &human_api_types.Wobject{
 		Priority:    Priority,
 		Type:        Type,
 		Title:       Title,
 		Description: Description,
+		WorkerID:    *WorkerID,
 	}
+
 	humanAPI.ProvisionWobject(wobj)
 	return nil
 
 }
 
+func (humanAPI *HumanAPI) GetWorkerId(Name *string) (*string, error) {
+	id, err := (*humanAPI.ProjectManagerAPI).GetWorkerId(Name)
+	if err != nil {
+		return nil, err
+	}
+	return id, nil
+}
+
+func (humanAPI *HumanAPI) SetConfiguration(Config any) error {
+	HumanConfig, ok := Config.(*HumanAPIConfiguration)
+	if !ok {
+		return fmt.Errorf("was not able to convert %v to HumanAPIConfig", Config)
+	}
+	humanAPI.Configuration = HumanConfig
+	return nil
+}
+
 func (humanAPI *HumanAPI) ProvisionWobject(WorkObject *human_api_types.Wobject) error {
-	err := humanAPI.ProjectManagerAPI.ProvisionWobject(WorkObject)
+	err := (*humanAPI.ProjectManagerAPI).ProvisionWobject(WorkObject)
 	if err != nil {
 		return err
 	}
