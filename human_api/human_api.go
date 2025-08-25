@@ -775,7 +775,7 @@ func (humanAPI *HumanAPI) TicketAction() error {
 
 func (humanAPI *HumanAPI) CreateTicket(Type, Title, Description, WorkerName string, Priority int) error {
 
-	WorkerID, err := humanAPI.GetWorkerId(&WorkerName)
+	Worker, err := humanAPI.GetWorker(&WorkerName)
 	if err != nil {
 		return err
 	}
@@ -784,7 +784,7 @@ func (humanAPI *HumanAPI) CreateTicket(Type, Title, Description, WorkerName stri
 		Type:        Type,
 		Title:       Title,
 		Description: Description,
-		WorkerID:    *WorkerID,
+		WorkerID:    (*Worker).Id,
 	}
 
 	humanAPI.ProvisionWobject(wobj)
@@ -792,12 +792,12 @@ func (humanAPI *HumanAPI) CreateTicket(Type, Title, Description, WorkerName stri
 
 }
 
-func (humanAPI *HumanAPI) GetWorkerId(Name *string) (*string, error) {
-	id, err := (*humanAPI.ProjectManagerAPI).GetWorkerId(Name)
+func (humanAPI *HumanAPI) GetWorker(Name *string) (*human_api_types.Worker, error) {
+	worker, err := (*humanAPI.ProjectManagerAPI).GetWorker(Name)
 	if err != nil {
 		return nil, err
 	}
-	return id, nil
+	return worker, nil
 }
 
 func (humanAPI *HumanAPI) SetConfiguration(Config any) error {

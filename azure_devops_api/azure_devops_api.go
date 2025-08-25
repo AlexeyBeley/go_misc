@@ -932,8 +932,33 @@ type AzureDevopsAPI struct {
 	Configuration *Configuration
 }
 
+func validateConfig(config *Configuration) error {
+	errors := []string{}
+	if config.OrganizationName == "" {
+		errors = append(errors, fmt.Sprintf("OrganizationName was not set"))
+	}
+	if config.PersonalAccessToken == "" {
+		errors = append(errors, fmt.Sprintf("PersonalAccessToken was not set"))
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return fmt.Errorf("validating Azure Devops Configuration: %s", strings.Join(errors, "\n"))
+}
+
 func AzureDevopsAPINew(options ...config_pol.Option) (*AzureDevopsAPI, error) {
 	config := &Configuration{}
+	retAPI := &AzureDevopsAPI{}
+
+	for _, option := range options {
+		option(retAPI, config)
+	}
+
+	err := validateConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
 	organizationUrl := "https://dev.azure.com/" + config.OrganizationName // todo: replace value with your organization url
 
 	// Create a connection to your organization
@@ -941,31 +966,25 @@ func AzureDevopsAPINew(options ...config_pol.Option) (*AzureDevopsAPI, error) {
 
 	ctx := context.Background()
 
-	ret := &AzureDevopsAPI{}
-
-	for _, option := range options {
-		option(ret, config)
-	}
-
 	gitClient, err := GitClientNew(config, ctx, connection)
 	if err != nil {
 		return nil, err
 	}
-	ret.GitClient = *gitClient
+	retAPI.GitClient = *gitClient
 
 	BuildClient, err := BuildClientNew(config, ctx, connection)
 	if err != nil {
 		return nil, err
 	}
-	ret.BuildClient = *BuildClient
+	retAPI.BuildClient = *BuildClient
 
 	GraphClient, err := GraphClientNew(config, ctx, connection)
 	if err != nil {
 		return nil, err
 	}
-	ret.GraphClient = *GraphClient
+	retAPI.GraphClient = *GraphClient
 
-	return ret, nil
+	return retAPI, nil
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) SetConfiguration(Config any) error {
@@ -1212,16 +1231,49 @@ func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wob
 
 }
 
-func (azureDevopsAPI *AzureDevopsAPI) GetWorkerId(Name *string) (*string, error) {
+func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.Worker, error) {
+	NameParts, err := splitWorkerNameToParts(Name, []string{" ", ".", "-", "_", ","})
+	if err != nil {
+		return nil, err
+	}
+
 	users, err := azureDevopsAPI.GraphClient.ListUsers()
 	if err != nil {
 		return nil, err
 	}
 	for _, user := range users {
-		lg.InfoF("test: %v", user)
+		if checkWorkerNamePartsMatch(user.DisplayName, NameParts) {
+			lg.InfoF("test: %v", user)
+			return &human_api_types.Worker{Id: *user.Url, Name: *user.DisplayName}, nil
 
+		}
 	}
 
 	return nil, nil
 
+}
+
+func splitWorkerNameToParts(Name *string, Separators []string) ([]string, error) {
+
+	return nil, nil
+}
+
+func splitSliceBySeparators(slice []string, separator string) []string {
+	ret := []string{}
+
+	for _, str := range slice {
+		ret = append(ret, strings.Split(str, separator)...)
+	}
+
+	return ret
+}
+
+func checkWorkerNamePartsMatch(Name *string, parts []string) bool {
+	for _, part := range parts {
+		if !strings.Contains(*Name, part) {
+			return false
+		}
+	}
+
+	return true
 }

@@ -14,3 +14,9 @@ type Wobject struct {
 	Sprint       string    `json:"Sprint"`
 	Type         string    `json:"Type"`
 }
+
+
+type Worker struct {
+	Id           string    `json:"Id"`
+	Name        string    `json:"Title"`
+}
