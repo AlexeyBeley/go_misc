@@ -779,12 +779,19 @@ func (humanAPI *HumanAPI) CreateTicket(Type, Title, Description, WorkerName stri
 	if err != nil {
 		return err
 	}
+
+	WorkerSprint, err := humanAPI.GetWorkerSprint(Worker)
+	if err != nil {
+		return err
+	}
+
 	wobj := &human_api_types.Wobject{
 		Priority:    Priority,
 		Type:        Type,
 		Title:       Title,
 		Description: Description,
 		WorkerID:    (*Worker).Id,
+		Sprint:      (*WorkerSprint).Id,
 	}
 
 	humanAPI.ProvisionWobject(wobj)
@@ -798,6 +805,13 @@ func (humanAPI *HumanAPI) GetWorker(Name *string) (*human_api_types.Worker, erro
 		return nil, err
 	}
 	return worker, nil
+}
+func (humanAPI *HumanAPI) GetWorkerSprint(Worker *human_api_types.Worker) (*human_api_types.Sprint, error) {
+	sprint, err := (*humanAPI.ProjectManagerAPI).GetWorkerSprint(Worker)
+	if err != nil {
+		return nil, err
+	}
+	return sprint, nil
 }
 
 func (humanAPI *HumanAPI) SetConfiguration(Config any) error {

@@ -5,7 +5,6 @@ go 1.24.0
 toolchain go1.24.3
 
 require (
-	github.com/AlexeyBeley/go_common v0.0.2
 	github.com/aws/aws-sdk-go v1.55.6
 	github.com/google/uuid v1.6.0
 	gonum.org/v1/plot v0.16.0
@@ -66,5 +65,3 @@ require (
 	k8s.io/api v0.33.1
 	k8s.io/client-go v0.33.1
 )
-
-replace github.com/AlexeyBeley/go_common => ../go_common

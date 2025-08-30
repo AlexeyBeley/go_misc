@@ -18,5 +18,10 @@ type Wobject struct {
 
 type Worker struct {
 	Id           string    `json:"Id"`
-	Name        string    `json:"Title"`
+	Name        string    `json:"Name"`
+	SystemName string
+}
+
+type Sprint struct{
+	Id string `json:"Id"`
 }

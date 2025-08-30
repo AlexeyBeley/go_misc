@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 )

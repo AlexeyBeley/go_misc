@@ -3,7 +3,7 @@ package aws_api
 import (
 	"fmt"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 )
 
 type GenericCallback func(any) error

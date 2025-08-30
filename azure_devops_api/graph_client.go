@@ -43,3 +43,16 @@ func (graphClient *GraphClient) ListUsers() ([]graph.GraphUser, error) {
 
 	return *response.GraphUsers, nil
 }
+
+func (graphClient *GraphClient) GetUser(UserDescriptor *string) (*graph.GraphUser, error) {
+
+	args := graph.GetUserArgs{UserDescriptor: UserDescriptor}
+
+	// Make the API call to get a page of repositories
+	response, err := graphClient.Client.GetUser(context.Background(), args)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}

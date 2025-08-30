@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	replacementEngine "github.com/AlexeyBeley/go_common/replacement_engine"
+	replacementEngine "github.com/AlexeyBeley/go_misc/replacement_engine"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/iam"

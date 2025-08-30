@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 	apono_api "github.com/AlexeyBeley/go_misc/apono_api"
 )
 

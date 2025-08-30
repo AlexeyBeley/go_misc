@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	json_api "github.com/AlexeyBeley/go_common/json_api"
+	json_api "github.com/AlexeyBeley/go_misc/json_api"
 )
 
 type testData struct {

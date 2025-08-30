@@ -930,6 +930,8 @@ type AzureDevopsAPI struct {
 	BuildClient   BuildClient
 	GraphClient   GraphClient
 	Configuration *Configuration
+	CoreClient    CoreClient
+	WorkClient    WorkClient
 }
 
 func validateConfig(config *Configuration) error {
@@ -983,6 +985,19 @@ func AzureDevopsAPINew(options ...config_pol.Option) (*AzureDevopsAPI, error) {
 		return nil, err
 	}
 	retAPI.GraphClient = *GraphClient
+
+	CoreClient, err := CoreClientNew(config, ctx, connection)
+	if err != nil {
+		return nil, err
+	}
+
+	retAPI.CoreClient = *CoreClient
+	WorkClient, err := WorkClientNew(config, ctx, connection)
+	if err != nil {
+		return nil, err
+	}
+
+	retAPI.WorkClient = *WorkClient
 
 	return retAPI, nil
 }
@@ -1242,9 +1257,13 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.
 		return nil, err
 	}
 	for _, user := range users {
-		if checkWorkerNamePartsMatch(user.DisplayName, NameParts) {
+		match, err := checkWorkerNamePartsMatch(user.DisplayName, NameParts)
+		if err != nil {
+			return nil, err
+		}
+		if match {
 			lg.InfoF("test: %v", user)
-			return &human_api_types.Worker{Id: *user.Url, Name: *user.DisplayName}, nil
+			return &human_api_types.Worker{Id: *user.Descriptor, Name: *user.DisplayName, SystemName: *user.PrincipalName}, nil
 
 		}
 	}
@@ -1253,9 +1272,26 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.
 
 }
 
-func splitWorkerNameToParts(Name *string, Separators []string) ([]string, error) {
+func (azureDevopsAPI *AzureDevopsAPI) GetWorkerSprint(worker *human_api_types.Worker) (*human_api_types.Sprint, error) {
+
+	iters, err := azureDevopsAPI.CoreClient.GetProjects()
+	if err != nil {
+		return nil, err
+	}
+	for _, iter := range iters {
+		fmt.Printf("proj: %v, time: %v\n", *iter.Name, *iter.LastUpdateTime)
+	}
 
 	return nil, nil
+
+}
+
+func splitWorkerNameToParts(Name *string, Separators []string) ([]string, error) {
+	ret := []string{*Name}
+	for _, separator := range Separators {
+		ret = splitSliceBySeparators(ret, separator)
+	}
+	return ret, nil
 }
 
 func splitSliceBySeparators(slice []string, separator string) []string {
@@ -1268,12 +1304,15 @@ func splitSliceBySeparators(slice []string, separator string) []string {
 	return ret
 }
 
-func checkWorkerNamePartsMatch(Name *string, parts []string) bool {
+func checkWorkerNamePartsMatch(Name *string, parts []string) (bool, error) {
+	if len(parts) == 0 {
+		return false, fmt.Errorf("oarts are empty %s ", *Name)
+	}
 	for _, part := range parts {
 		if !strings.Contains(*Name, part) {
-			return false
+			return false, nil
 		}
 	}
 
-	return true
+	return true, nil
 }

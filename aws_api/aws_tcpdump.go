@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AlexeyBeley/go_common/logger"
-	replacementEngine "github.com/AlexeyBeley/go_common/replacement_engine"
+	"github.com/AlexeyBeley/go_misc/logger"
+	replacementEngine "github.com/AlexeyBeley/go_misc/replacement_engine"
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"

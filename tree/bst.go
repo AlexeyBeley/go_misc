@@ -3,7 +3,7 @@ package tree
 import (
 	"strconv"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 )
 
 var lg = &(logger.Logger{Level: logger.INFO})

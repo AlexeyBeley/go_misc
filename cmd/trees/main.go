@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 	"github.com/AlexeyBeley/go_misc/list"
 	"github.com/AlexeyBeley/go_misc/tree"
 )

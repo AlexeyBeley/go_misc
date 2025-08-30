@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 	actionManager "github.com/AlexeyBeley/go_misc/action_manager"
 	clients "github.com/AlexeyBeley/go_misc/aws_api/clients"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"

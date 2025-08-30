@@ -6,7 +6,7 @@ import (
 	"reflect" // Import the reflect package
 	"time"
 
-	"github.com/AlexeyBeley/go_common/logger"
+	"github.com/AlexeyBeley/go_misc/logger"
 )
 
 var lg = &(logger.Logger{})
