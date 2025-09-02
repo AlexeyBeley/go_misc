@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/AlexeyBeley/go_misc/logger"
 	actionManager "github.com/AlexeyBeley/go_misc/action_manager"
 	humanAPI "github.com/AlexeyBeley/go_misc/human_api"
 	humanAPISlackServer "github.com/AlexeyBeley/go_misc/human_api/slack_server"
+	"github.com/AlexeyBeley/go_misc/logger"
 )
 
 var lg = &(logger.Logger{})
@@ -22,6 +22,13 @@ func main() {
 	}
 	(*actionManager).ActionMap = map[string]any{
 		"TicketAction": humanApi.TicketAction,
-		"server":       humanAPISlackServer.Start}
+		"SlackBotServer":       humanAPISlackServer.Start}
+		
+		action := "SlackBotServer"
+		err = actionManager.RunAction(&action)
+
+	if err != nil {
+		panic(err)
+	}
 
 }

@@ -14,7 +14,8 @@ COPY . .
 # Build the Go application into a single, static binary
 # The -o flag names the output binary.
 # The CGO_ENABLED=0 flag creates a statically linked binary without external dependencies.
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o my-app .
+
+RUN cd /app/cmd/human_api && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o my-app .
 
 FROM alpine:latest
 
@@ -23,7 +24,7 @@ WORKDIR /root/
 
 # Copy the compiled binary from the 'builder' stage
 # The '--from=builder' flag is the key to multi-stage builds
-COPY --from=builder /app/my-app .
+COPY --from=builder /app/cmd/human_api/my-app .
 
 # Expose the port that your Go application listens on
 EXPOSE 8080

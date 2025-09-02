@@ -8,7 +8,16 @@ import (
 )
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, World! You requested: %s, params: %v\n", r.URL.Path, r.Body)
+	input := []byte{}
+	intReadBytes, err := r.Body.Read(input)
+	_ = intReadBytes
+	strRet := string(input)
+	if err != nil {
+
+	}
+
+	fmt.Fprintf(w, "Hello, World! You requested: %s, params: %v, paramsStr: %s\n", r.URL.Path, r.Body, strRet)
+	log.Printf("Hello, World! You requested: %s, params: %v, paramsStr: %s\n", r.URL.Path, r.Body, strRet)
 }
 
 func jsonHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,10 +34,16 @@ func jsonHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(msg)
 }
 
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	// Example of a struct to be returned as JSON
+
+	fmt.Fprint(w, "OK")
+}
+
 func Start() error {
 	// Register the handler functions for different paths
-	http.HandleFunc("/", mainHandler)
-	http.HandleFunc("/json", jsonHandler)
+	http.HandleFunc("/ticket", mainHandler)
+	http.HandleFunc("/health-check", healthCheckHandler)
 
 	// Start the server on port 8080
 	log.Println("Starting server on port 8080")
