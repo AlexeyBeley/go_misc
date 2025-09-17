@@ -1,0 +1,107 @@
+{
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "Please select the work object type and team."
+      }
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "static_select",
+          "placeholder": {
+            "type": "plain_text",
+            "text": "Select type",
+            "emoji": true
+          },
+          "action_id": "select_type",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Task",
+                "emoji": true
+              },
+              "value": "task"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Bug",
+                "emoji": true
+              },
+              "value": "bug"
+            }
+          ]
+        },
+        {
+          "type": "static_select",
+          "placeholder": {
+            "type": "plain_text",
+            "text": "Select team",
+            "emoji": true
+          },
+          "action_id": "select_team",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Infra",
+                "emoji": true
+              },
+              "value": "infra"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Dev",
+                "emoji": true
+              },
+              "value": "dev"
+            }
+          ]
+        },
+        {
+          "type": "static_select",
+          "placeholder": {
+            "type": "plain_text",
+            "text": "Select status",
+            "emoji": true
+          },
+          "action_id": "select_type",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "New",
+                "emoji": true
+              },
+              "value": "new"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Active",
+                "emoji": true
+              },
+              "value": "active"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Submit Selection",
+            "emoji": true
+          },
+          "value": "submit_selection",
+          "action_id": "submit_button"
+        }
+      ]
+    }
+  ]
+}

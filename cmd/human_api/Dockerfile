@@ -25,6 +25,8 @@ WORKDIR /root/
 # Copy the compiled binary from the 'builder' stage
 # The '--from=builder' flag is the key to multi-stage builds
 COPY --from=builder /app/cmd/human_api/my-app .
+COPY --from=builder /app/cmd/human_api/slack_bot_kit/ /opt
+
 
 # Expose the port that your Go application listens on
 EXPOSE 8080
