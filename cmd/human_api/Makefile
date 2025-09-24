@@ -37,6 +37,6 @@ update_artifact: build_image
 deploy: update_artifact deploy_raw
 
 deploy_raw:
-	aws ecs update-service --region ${REGION} --cluster ${CLUSTER_NAME} --service ${SERVICE_NAME} --force-new-deployment
+	aws ecs update-service --region ${REGION} --cluster ${CLUSTER_NAME} --service ${SERVICE_NAME} --force-new-deployment | cat
 	
 

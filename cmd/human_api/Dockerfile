@@ -22,10 +22,9 @@ FROM alpine:latest
 # Set the working directory for the final image
 WORKDIR /root/
 
-# Copy the compiled binary from the 'builder' stage
-# The '--from=builder' flag is the key to multi-stage builds
+RUN mkdir -p /opt/human_api
 COPY --from=builder /app/cmd/human_api/my-app .
-COPY --from=builder /app/cmd/human_api/slack_bot_kit/ /opt
+COPY --from=builder /app/cmd/human_api/slack_block_kit /opt/human_api/slack_block_kit
 
 
 # Expose the port that your Go application listens on

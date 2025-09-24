@@ -1,0 +1,45 @@
+{
+    "type": "block_actions",
+    "user": {
+        "id": "TESTUSERID",
+        "username": "alexey.horey",
+        "name": "alexey.horey",
+        "team_id": "TESTTEAMID"
+    },
+    "api_app_id": "TESTAPIAPPID",
+    "token": "TESTTOKEN",
+    "container": {
+        "type": "message",
+        "message_ts": "1758194691.000200",
+        "channel_id": "TESTCHANNELID",
+        "is_ephemeral": true
+    },
+    "trigger_id": "1111111111111.33333333333.aaaaaaaaaaaaaaaaaaaaa11111111111111111",
+    "team": {
+        "id": "TESTTEAMID",
+        "domain": "TestDoaminHorey"
+    },
+    "enterprise": null,
+    "is_enterprise_install": false,
+    "channel": {
+        "id": "TESTCHANNELID",
+        "name": "directmessage"
+    },
+    "state": {
+        "values": {}
+    },
+    "response_url": "https://hooks.slack.com/actions/AAAAAA/1111111111/XXXXXXXXXXXXX",
+    "actions": [
+        {
+            "action_id": "main->wobj",
+            "block_id": "usHca",
+            "text": {
+                "type": "plain_text",
+                "text": "Wobject",
+                "emoji": true
+            },
+            "type": "button",
+            "action_ts": "1758248843.401296"
+        }
+    ]
+}

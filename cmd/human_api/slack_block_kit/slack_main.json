@@ -4,7 +4,7 @@
 			"type": "header",
 			"text": {
 				"type": "plain_text",
-				"text": "Choose an action:"
+				"text": "Choose Wisely!"
 			}
 		},
 		{
@@ -14,9 +14,9 @@
 					"type": "button",
 					"text": {
 						"type": "plain_text",
-						"text": "Create New"
+						"text": "Wobject"
 					},
-					"action_id": "create"
+					"action_id": "main->wobj"
 				}
 			]
 		},
@@ -27,9 +27,9 @@
 					"type": "button",
 					"text": {
 						"type": "plain_text",
-						"text": "Init Daily"
+						"text": "Status"
 					},
-					"action_id": "init_daily"
+					"action_id": "main->status"
 				}
 			]
 		},
@@ -40,9 +40,9 @@
 					"type": "button",
 					"text": {
 						"type": "plain_text",
-						"text": "Submit Daily"
+						"text": "Help"
 					},
-					"action_id": "submit_daily"
+					"action_id": "main->help"
 				}
 			]
 		}

@@ -3,7 +3,11 @@ package slack_server
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
+
+	common_utils "github.com/AlexeyBeley/go_misc/common_utils"
 )
 
 var GlobalHumanAPIConfigurationFilePath = "/opt/human_api/human_api_config.json"
@@ -79,8 +83,8 @@ func TestHapiMain(t *testing.T) {
 			URL:      &url.URL{Path: "bla.com"},
 			PostForm: request,
 			Header:   http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}}
-
-		hapiMain(w, r)
+		slackServer := &SlackServer{}
+		slackServer.hapiMain(w, r)
 		SCExpected := http.StatusOK
 
 		if *w.DataCollector.StatusCode != SCExpected {
@@ -89,21 +93,59 @@ func TestHapiMain(t *testing.T) {
 	})
 }
 
-func TestAsyncResponse(t *testing.T) {
+func TestSendResponseUrlMessageRaw(t *testing.T) {
 	t.Run("Init test", func(t *testing.T) {
 
 		url := ""
-		response := map[string]any{
-			"text":             "Oh hey, this is a marvelous message in a thread!",
-			"response_type":    "in_channel",
-			"replace_original": "false",
-			"thread_ts":        "1234567890",
-		}
 
-		err := AsyncResponse(200, response, url)
+		response := map[string]any{"1": "2"}
+		slackServer := &SlackServer{}
+		err := slackServer.sendResponseUrlMessage(url, response)
 		if err != nil {
 			t.Fatalf("Failed with error: %v", err)
 		}
 
+	})
+}
+
+func TestHandleInteractivePayload(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		testPayloadFilePath := filepath.Join(dir, "payloads", "main_wobj.json")
+		paylod, err := os.ReadFile(testPayloadFilePath)
+
+		slackServer := SlackServerNew(common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")), common_utils.StrPTR("TESTTOKEN"))
+		err = slackServer.handleInteractivePayload(string(paylod))
+
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+	})
+}
+
+func TestSendResponseUrlMessageFromFile(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+		responseUrl := ""
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")), common_utils.StrPTR("TESTTOKEN"))
+
+		response, err := slackServer.LoadGenericMenu("slack_wobj_create_new.json")
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+		err = slackServer.sendResponseUrlMessage(responseUrl, response)
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
 	})
 }
