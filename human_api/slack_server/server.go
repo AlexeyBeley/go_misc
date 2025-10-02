@@ -12,24 +12,59 @@ import (
 	"text/template"
 	"time"
 	"unicode"
+
+	"github.com/AlexeyBeley/go_misc/azure_devops_api"
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
+	human_api "github.com/AlexeyBeley/go_misc/human_api"
+	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
 )
 
-type SlackServer struct {
-	SlackBlockKitDirPath string
-	SlackAppToken        string
+type Configuration struct {
+	MainDirPath                         *string
+	SlackBlockKitDirPath                *string
+	VerificationToken                   *string
+	AzureDevopsAPIConfigurationFilePath *string
+	HumanAPIConfigurationFilePath       *string
 }
 
-func SlackServerNew(mainDirPath, token *string) *SlackServer {
-	if mainDirPath == nil {
-		mainDirPath = new(string)
-		*mainDirPath = "/opt/human_api/"
+type SlackServer struct {
+	Configuration *Configuration
+	humanAPI      *human_api.HumanAPI
+}
+
+func SlackServerNew(options ...config_pol.Option) *SlackServer {
+
+	slackServer := &SlackServer{}
+
+	configuration := &Configuration{}
+	for _, option := range options {
+		option(slackServer, configuration)
 	}
 
-	if token == nil || *token == "" {
+	if configuration.MainDirPath == nil {
+		configuration.MainDirPath = new(string)
+		*configuration.MainDirPath = "/opt/human_api/"
+	}
+
+	if configuration.SlackBlockKitDirPath == nil {
+		configuration.SlackBlockKitDirPath = new(string)
+		*configuration.SlackBlockKitDirPath = filepath.Join(*configuration.MainDirPath, "slack_server_static_files")
+	}
+
+	if configuration.VerificationToken == nil || *configuration.VerificationToken == "" {
 		panic("The environemnt variabele value of SLACK_APP_TOKEN is an empty string, so it's not set.\n")
 	}
 
-	return &SlackServer{SlackBlockKitDirPath: filepath.Join(*mainDirPath, "slack_block_kit"), SlackAppToken: *token}
+	return slackServer
+}
+
+func (slackServer *SlackServer) SetConfiguration(ConfigAny any) error {
+	Config, ok := ConfigAny.(*Configuration)
+	if !ok {
+		return fmt.Errorf("was not able to convert %v to slackServer Configuration", ConfigAny)
+	}
+	slackServer.Configuration = Config
+	return nil
 }
 
 func (slackServer *SlackServer) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +138,7 @@ func (slackServer *SlackServer) handleInteractivePayload(payload string) error {
 	request := new(map[string]any)
 	json.Unmarshal([]byte(payload), request)
 
-	if token, ok := (*request)["token"]; !ok || token != slackServer.SlackAppToken {
+	if token, ok := (*request)["token"]; !ok || token != slackServer.Configuration.VerificationToken {
 		return fmt.Errorf("Error handling request Slack App: %s", "token iether wrong or does not present")
 
 	}
@@ -221,7 +256,7 @@ func (slackServer *SlackServer) hapiMain(w http.ResponseWriter, r *http.Request)
 	statusCode := http.StatusOK
 	var responseAny map[string]any
 
-	if token, ok := data["token"]; !ok || token != slackServer.SlackAppToken {
+	if token, ok := data["token"]; !ok || token != slackServer.Configuration.VerificationToken {
 		responseAny = map[string]any{"Error handling request": "Slack App token iether wrong or does not present"}
 		statusCode = http.StatusBadRequest
 	}
@@ -300,7 +335,7 @@ func (slackServer *SlackServer) wobjHandler(text string) (response map[string]an
 }
 
 func (slackServer *SlackServer) loadJsonFile(fileName string, replacements ...any) (map[string]any, error) {
-	fullPath := filepath.Join(slackServer.SlackBlockKitDirPath, fileName)
+	fullPath := filepath.Join(*slackServer.Configuration.SlackBlockKitDirPath, fileName)
 	jsonData, err := os.ReadFile(fullPath)
 	if err != nil {
 		log.Printf("error reading file %s: %v", fullPath, err)
@@ -394,7 +429,7 @@ func (slackServer *SlackServer) WobjectModalHandler(w http.ResponseWriter, r *ht
 		Type: "bug",
 	}
 
-	tmpl, err := template.ParseFiles(filepath.Join(slackServer.SlackBlockKitDirPath, "templates", "wobject_create.html"))
+	tmpl, err := template.ParseFiles(filepath.Join(*slackServer.Configuration.SlackBlockKitDirPath, "templates", "wobject_create.html"))
 	if err != nil {
 		log.Printf("Error loading wobject_create: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -410,4 +445,33 @@ func (slackServer *SlackServer) WobjectModalHandler(w http.ResponseWriter, r *ht
 	}
 	log.Printf("WobjectModalHandler sent template %v", tmpl)
 	return true
+}
+
+func (slackServer *SlackServer) humanAPIInit() error {
+	ProjectManagerAPI, err := azure_devops_api.AzureDevopsAPINew(config_pol.WithConfigurationFile(slackServer.Configuration.AzureDevopsAPIConfigurationFilePath))
+	if err != nil {
+		return err
+	}
+
+	api, err := human_api.HumanAPINew(config_pol.WithConfigurationFile(slackServer.Configuration.HumanAPIConfigurationFilePath),
+		human_api.WithProjectManagerAPI(ProjectManagerAPI))
+	if err != nil {
+		return err
+	}
+	slackServer.humanAPI = api
+	return nil
+}
+
+func (slackServer *SlackServer) ProvisionWobject(WorkObject *human_api_types.Wobject) error {
+	err := slackServer.humanAPIInit()
+	if err != nil {
+		return err
+	}
+
+	err = slackServer.humanAPI.ProvisionWobject(WorkObject)
+	if err != nil {
+		return err
+	}
+	return nil
+
 }

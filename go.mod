@@ -62,6 +62,7 @@ require (
 
 require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/microsoft/azure-devops-go-api/azuredevops v1.0.0-b5
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/slack-go/slack v0.17.3
 	k8s.io/api v0.33.1

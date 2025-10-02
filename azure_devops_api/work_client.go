@@ -25,9 +25,13 @@ func WorkClientNew(Configuration *Configuration, context context.Context, connec
 	return ret, nil
 }
 
-func (workClient *WorkClient) GetIterations() ([]work.TeamSettingsIteration, error) {
+func (workClient *WorkClient) GetIterations(teamId *string) ([]work.TeamSettingsIteration, error) {
 
 	args := work.GetTeamIterationsArgs{Project: &workClient.Configuration.ProjectName}
+	// no permissions
+	//if teamId != nil {
+	//	args.Team = teamId
+	//}
 
 	// Make the API call to get a page of repositories
 	iters, err := workClient.Client.GetTeamIterations(context.Background(), args)
@@ -36,4 +40,16 @@ func (workClient *WorkClient) GetIterations() ([]work.TeamSettingsIteration, err
 	}
 
 	return *iters, nil
+}
+
+func (workClient *WorkClient) GetTeamFieldValues(teamName *string) (*work.TeamFieldValues, error) {
+
+	args := work.GetTeamFieldValuesArgs{Project: &workClient.Configuration.ProjectName, Team: teamName}
+
+	response, err := workClient.Client.GetTeamFieldValues(context.Background(), args)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }

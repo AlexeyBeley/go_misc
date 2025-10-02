@@ -22,6 +22,7 @@ init_build_dir:
 copy_to_build: init_build_dir
 	@cp -r ${ROOT_DIR}/* ${BUILD_DIR}
 	@cp  ${CURRENT_DIR}/Dockerfile ${BUILD_DIR}
+	@cp /opt/human_api/slack_server_configuration.json ${BUILD_DIR}/slack_server_configuration.json
 
 
 build_image: copy_to_build 

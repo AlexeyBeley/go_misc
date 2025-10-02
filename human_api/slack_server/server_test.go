@@ -8,10 +8,12 @@ import (
 	"testing"
 
 	common_utils "github.com/AlexeyBeley/go_misc/common_utils"
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
+	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
 )
 
 var GlobalHumanAPIConfigurationFilePath = "/opt/human_api/human_api_config.json"
-var GlobalAzureDevopsAPIConfigurationFilePath = "/opt/azure_devops_api/configuration.json"
+var GlobalSlackServerConfigurationFilePath = "/opt/human_api/slack_server_configuration.json"
 
 type ResponseWriterMock struct {
 	DataCollector *ResponseWriterDataCollector
@@ -119,7 +121,9 @@ func TestHandleInteractivePayload(t *testing.T) {
 		testPayloadFilePath := filepath.Join(dir, "payloads", "main_wobj.json")
 		paylod, err := os.ReadFile(testPayloadFilePath)
 
-		slackServer := SlackServerNew(common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")), common_utils.StrPTR("TESTTOKEN"))
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+
+		//common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")) )
 		err = slackServer.handleInteractivePayload(string(paylod))
 
 		if err != nil {
@@ -137,13 +141,90 @@ func TestSendResponseUrlMessageFromFile(t *testing.T) {
 			t.Fatalf("Failed with error: %v", err)
 		}
 
-		slackServer := SlackServerNew(common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")), common_utils.StrPTR("TESTTOKEN"))
-
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
 		response, err := slackServer.LoadGenericMenu("slack_wobj_create_new.json")
 		if err != nil {
 			t.Fatalf("Failed with error: %v", err)
 		}
 		err = slackServer.sendResponseUrlMessage(responseUrl, response)
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+	})
+}
+
+func TestProvisionBugWobject(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+
+		workObject := &human_api_types.Wobject{}
+
+		workObject.Id = ""
+		workObject.ParentID = ""
+		workObject.Priority = 1
+		workObject.Title = "test hry"
+		workObject.Description = "test hry desc"
+		workObject.LeftTime = 4
+		workObject.InvestedTime = 1
+		workObject.WorkerID = "al"
+		workObject.ChildrenIDs = &[]string{}
+		workObject.Sprint = ""
+		workObject.Status = "Closed"
+		workObject.Type = "Bug"
+
+		err = slackServer.ProvisionWobject(workObject)
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+	})
+}
+
+func TestProvisionTaskWobject(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+
+		workObject := &human_api_types.Wobject{}
+
+		workObject.Id = ""
+		workObject.ParentID = ""
+		workObject.Priority = 1
+		workObject.Title = "test hry"
+		workObject.Description = "test hry desc"
+		workObject.LeftTime = 4
+		workObject.InvestedTime = 1
+		workObject.WorkerID = "hry"
+		workObject.ChildrenIDs = &[]string{}
+		workObject.Sprint = ""
+		workObject.Status = "Closed"
+		workObject.Type = "Task"
+
+		err = slackServer.ProvisionWobject(workObject)
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
 		if err != nil {
 			t.Fatalf("Failed with error: %v", err)
 		}

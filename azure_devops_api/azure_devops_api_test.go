@@ -21,16 +21,6 @@ func loadRealConfig() Configuration {
 	return config
 }
 
-func TestHoreyClient(t *testing.T) {
-	t.Run("Valid run", func(t *testing.T) {
-		realConfig := loadRealConfig()
-		err := HoreyClient(realConfig)
-		if err != nil {
-			t.Errorf("%v", err)
-		}
-	})
-}
-
 func TestGetAllWits(t *testing.T) {
 	t.Run("Valid run", func(t *testing.T) {
 		realConfig := loadRealConfig()

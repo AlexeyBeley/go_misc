@@ -6,6 +6,7 @@ import (
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/webapi"
 )
 
 type CoreClient struct {
@@ -49,4 +50,17 @@ func (coreClient *CoreClient) GetProjects() ([]core.TeamProjectReference, error)
 	}
 
 	return GetProjectsResponseValue.Value, nil
+}
+
+func (coreClient *CoreClient) GetTeamMembers(teamId *string) (*[]webapi.TeamMember, error) {
+
+	members, err := coreClient.Client.GetTeamMembersWithExtendedProperties(context.Background(), core.GetTeamMembersWithExtendedPropertiesArgs{
+		ProjectId: &coreClient.Configuration.ProjectName,
+		TeamId:    teamId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return members, err
+
 }

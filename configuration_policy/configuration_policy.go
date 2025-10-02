@@ -18,7 +18,7 @@ func (Config ConfigurationPolicy) InitFromFile(APIConfigurationPointer any) erro
 
 	jsonData, err := os.ReadFile(*Config.ConfigurationFilePath)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = json.Unmarshal(jsonData, APIConfigurationPointer)
@@ -28,7 +28,6 @@ func (Config ConfigurationPolicy) InitFromFile(APIConfigurationPointer any) erro
 type Configurable interface {
 	SetConfiguration(Config any) error
 }
-
 
 type Option func(Configurable, any) error
 

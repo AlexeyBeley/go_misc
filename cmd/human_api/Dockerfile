@@ -24,8 +24,8 @@ WORKDIR /root/
 
 RUN mkdir -p /opt/human_api
 COPY --from=builder /app/cmd/human_api/my-app .
-COPY --from=builder /app/cmd/human_api/slack_block_kit /opt/human_api/slack_block_kit
-
+COPY --from=builder /app/cmd/human_api/slack_server_static_files /opt/human_api/slack_server_static_files
+COPY --from=builder  /app/slack_server_configuration.json /opt/human_api/slack_server_configuration.json
 
 # Expose the port that your Go application listens on
 EXPOSE 8080

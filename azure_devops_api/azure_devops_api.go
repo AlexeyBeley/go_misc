@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	common_utils "github.com/AlexeyBeley/go_misc/common_utils"
 	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
 	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
 	logger "github.com/AlexeyBeley/go_misc/logger"
@@ -23,6 +24,8 @@ import (
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/build"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/graph"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/webapi"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/work"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/workitemtracking"
 )
@@ -30,13 +33,16 @@ import (
 var lg = logger.Logger{Level: logger.INFO}
 
 type Configuration struct {
-	PersonalAccessToken string `json:"PersonalAccessToken"`
-	OrganizationName    string `json:"OrganizationName"`
-	TeamName            string `json:"TeamName"`
-	ProjectName         string `json:"ProjectName"`
-	SprintName          string `json:"SprintName"`
-	AreaPath            string `json:"AreaPath"`
-	SystemAreaID        string `json:"SystemAreaID"`
+	PersonalAccessToken    string                       `json:"PersonalAccessToken"`
+	OrganizationName       string                       `json:"OrganizationName"`
+	TeamName               string                       `json:"TeamName"`
+	ProjectName            string                       `json:"ProjectName"`
+	SprintName             string                       `json:"SprintName"`
+	AreaPath               string                       `json:"AreaPath"`
+	SystemAreaID           string                       `json:"SystemAreaID"`
+	AreaPathByUserId       map[string]string            `json:"AreaPathByUserId"`
+	TeamIdByUserId         map[string]string            `json:"TeamIdByUserId"`
+	PerTypeProvisionKeyVal map[string]map[string]string `json:"PerTypeProvisionKeyVal"`
 }
 
 type WorkItem struct {
@@ -48,58 +54,6 @@ type WorkItem struct {
 		URL        string                 `json:"url"`
 		Attributes map[string]interface{} `json:"attributes"`
 	}
-}
-
-func HoreyClient(config Configuration) error {
-	// Azure DevOps organization and project details
-	organization := config.OrganizationName
-	project := config.OrganizationName
-	workItemID := 11111               // Replace with the actual work item ID
-	pat := config.PersonalAccessToken // Replace with your actual PAT
-
-	// Construct the API URL
-	url := fmt.Sprintf("https://dev.azure.com/%s/%s/_apis/wit/workitems/%d?api-version=7.0&$expand=relations", organization, project, workItemID)
-
-	// Create an HTTP client with a timeout (optional but recommended)
-	client := http.Client{Timeout: 10 * time.Second}
-
-	// Create a new request
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Set the Authorization header with your personal access token (PAT)
-
-	base64Pat := basicAuth(pat)
-	req.Header.Set("Authorization", "Basic "+base64Pat)
-
-	// Send the request
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	// Check the status code
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("HTTP status error: %d %s", resp.StatusCode, resp.Status)
-	}
-
-	// Decode the JSON response
-	var workItem WorkItem
-	err = json.NewDecoder(resp.Body).Decode(&workItem)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Access and print the relations
-	fmt.Println("Relations:")
-	for _, relation := range workItem.Relations {
-		fmt.Printf("- %s: %s\n", relation.Rel, relation.URL)
-		// You can access relation attributes using relation.Attributes
-	}
-	return nil
 }
 
 type witWorkItemRelation struct {
@@ -926,12 +880,13 @@ func getWorker(uniqueNamePart string) string {
 }
 
 type AzureDevopsAPI struct {
-	GitClient     GitClient
-	BuildClient   BuildClient
-	GraphClient   GraphClient
-	Configuration *Configuration
-	CoreClient    CoreClient
-	WorkClient    WorkClient
+	Configuration          *Configuration
+	GitClient              GitClient
+	BuildClient            BuildClient
+	GraphClient            GraphClient
+	CoreClient             CoreClient
+	WorkClient             WorkClient
+	WorkItemTrackingClient WorkItemTrackingClient
 }
 
 func validateConfig(config *Configuration) error {
@@ -953,7 +908,10 @@ func AzureDevopsAPINew(options ...config_pol.Option) (*AzureDevopsAPI, error) {
 	retAPI := &AzureDevopsAPI{}
 
 	for _, option := range options {
-		option(retAPI, config)
+		err := option(retAPI, config)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err := validateConfig(config)
@@ -998,6 +956,13 @@ func AzureDevopsAPINew(options ...config_pol.Option) (*AzureDevopsAPI, error) {
 	}
 
 	retAPI.WorkClient = *WorkClient
+
+	workItemTrackingClientNew, err := WorkItemTrackingClientNew(config, ctx, connection)
+	if err != nil {
+		return nil, err
+	}
+
+	retAPI.WorkItemTrackingClient = *workItemTrackingClientNew
 
 	return retAPI, nil
 }
@@ -1061,40 +1026,8 @@ func (azureDevopsAPI *AzureDevopsAPI) ProvisionWitFromDict(requestDict *(map[str
 		return nil
 	}
 
-	return azureDevopsAPI.CreateWit(requestDict)
+	return fmt.Errorf("deprecated, use provision_wobject instead ")
 
-}
-
-func (azureDevopsAPI *AzureDevopsAPI) CreateWit(requestDict *(map[string]string)) error {
-	req, err := azureDevopsAPI.GenerateCreateWitRequest(requestDict)
-	if err != nil {
-		log.Printf("received error in Generate Create Wit Request: %v", err)
-		return err
-	}
-	client := getClient()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("received error in HTTP clinet request: %v", err)
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Check the status code
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP status error: %d %s", resp.StatusCode, resp.Status)
-	}
-
-	// Decode the JSON response
-	//var queryResult witWorkItemQueryResult
-	var wit workitemtracking.WorkItem
-	err = json.NewDecoder(resp.Body).Decode(&wit)
-	if err != nil {
-		return err
-	}
-	(*requestDict)["Id"] = strconv.Itoa(*wit.Id)
-
-	return nil
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GenerateCreateWitRequest(requestDict *(map[string]string)) (*http.Request, error) {
@@ -1186,6 +1119,7 @@ func (azureDevopsAPI *AzureDevopsAPI) GenerateCreateWitRequest(requestDict *(map
 
 	return req, err
 }
+
 func (azureDevopsAPI *AzureDevopsAPI) GetIteration() (iteration work.TeamSettingsIteration, err error) {
 	WorkClient, ctx, err := azureDevopsAPI.GetWorkClientAndCtx()
 
@@ -1239,13 +1173,6 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorkClientAndCtx() (work.Client, contex
 	return Client, ctx, nil
 }
 
-func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wobject) error {
-
-	lg.InfoF("test")
-	return nil
-
-}
-
 func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.Worker, error) {
 	NameParts, err := splitWorkerNameToParts(Name, []string{" ", ".", "-", "_", ","})
 	if err != nil {
@@ -1273,16 +1200,32 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GetWorkerSprint(worker *human_api_types.Worker) (*human_api_types.Sprint, error) {
-
-	iters, err := azureDevopsAPI.CoreClient.GetProjects()
+	teamID, err := azureDevopsAPI.GetWorkerTeamId(worker.Id)
 	if err != nil {
 		return nil, err
 	}
-	for _, iter := range iters {
-		fmt.Printf("proj: %v, time: %v\n", *iter.Name, *iter.LastUpdateTime)
+
+	allSprints, err := azureDevopsAPI.WorkItemTrackingClient.GetSprints(&teamID)
+
+	//itersold, err := azureDevopsAPI.WorkClient.GetIterations(&teamID)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	//now := time.Now()
+	currentSprints := []human_api_types.Sprint{}
+	nowTime := time.Now()
+	for _, sprint := range allSprints {
+		if nowTime.Before(sprint.DateEnd) && nowTime.After(sprint.DateStart) {
+			currentSprints = append(currentSprints, sprint)
+		}
+	}
+
+	if len(currentSprints) > 1 || len(currentSprints) == 0 {
+		return nil, fmt.Errorf("expected to find single sprint, found: %d", len(currentSprints))
+	}
+
+	return &currentSprints[0], nil
 
 }
 
@@ -1315,4 +1258,283 @@ func checkWorkerNamePartsMatch(Name *string, parts []string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wobject) error {
+
+	azureDevopsAPI.WorkItemTrackingClient.Client.CreateWorkItem(nil, workitemtracking.CreateWorkItemArgs{})
+	requestDict, err := wobj.ConverttotMap()
+
+	if err != nil {
+		return err
+	}
+
+	Worker, err := azureDevopsAPI.GetWorkerByName(wobj.WorkerID)
+	if err != nil {
+		return err
+	}
+
+	path, err := azureDevopsAPI.GetAreaPath(Worker)
+	if err != nil {
+		return err
+	}
+
+	sprint, err := azureDevopsAPI.GetWorkerSprint(Worker)
+	if err != nil {
+		return err
+	}
+
+	if value, ok := (requestDict)["Id"]; !ok || value == "" {
+		keyValMap := map[string]string{
+			"/fields/System.IterationPath": sprint.Id,
+			"/fields/System.AreaPath":      path,
+			"/fields/System.Title":         wobj.Title,
+			"/fields/System.Description":   wobj.Description,
+		}
+
+		Document := []webapi.JsonPatchOperation{}
+
+		for Path, Value := range keyValMap {
+			Document = append(Document, webapi.JsonPatchOperation{
+				Op:    &webapi.OperationValues.Add,
+				Path:  &Path,
+				Value: Value,
+			})
+		}
+
+		Document = append(Document, webapi.JsonPatchOperation{
+			Op:    &webapi.OperationValues.Add,
+			Path:  common_utils.StrPTR("/fields/System.AssignedTo"),
+			Value: common_utils.StrPTR(Worker.Id),
+		})
+
+		keyVals, ok := azureDevopsAPI.Configuration.PerTypeProvisionKeyVal[wobj.Type]
+		if ok {
+			for Path, Value := range keyVals {
+				Document = append(Document, webapi.JsonPatchOperation{
+					Op:    &webapi.OperationValues.Add,
+					Path:  &Path,
+					Value: Value,
+				})
+
+			}
+		}
+
+		wit, err := azureDevopsAPI.WorkItemTrackingClient.CreateWit(&wobj.Type, &Document)
+		if err != nil {
+			return err
+		}
+		log.Printf("Created Wit: %d", *wit.Id)
+		
+		wobj.Id = strconv.Itoa(*wit.Id)
+
+		err = azureDevopsAPI.WorkItemTrackingClient.AddWitComment(*wit.Id, wobj.Description)
+		if err != nil {
+			return err
+		}
+	}
+
+	return azureDevopsAPI.UpdateWobject(wobj)
+
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobject) error {
+	wobjID, err := strconv.Atoi(wobj.Id)
+	if err != nil {
+		return err
+	}
+	wit, err := azureDevopsAPI.WorkItemTrackingClient.GetWit(&wobjID)
+	if err != nil {
+		return err
+	}
+
+	state, ok := (*wit.Fields)["System.State"].(string)
+	if !ok {
+		log.Fatalf("Could not find or assert System.State to a string for work item #%d.", *wit.Id)
+	}
+	keyValMap := map[string]string{}
+	if wobj.Status != state {
+		keyValMap["/fields/System.State"] = wobj.Status
+	}
+
+	Document := []webapi.JsonPatchOperation{}
+
+	for Path, Value := range keyValMap {
+		Document = append(Document, webapi.JsonPatchOperation{
+			Op:    &webapi.OperationValues.Replace,
+			Path:  &Path,
+			Value: Value,
+		})
+	}
+	_, err = azureDevopsAPI.WorkItemTrackingClient.UpdateWit(wit.Id, &Document)
+	return err
+
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetAreaPath(Worker *human_api_types.Worker) (string, error) {
+
+	path, ok := azureDevopsAPI.Configuration.AreaPathByUserId[Worker.Id]
+	if !ok {
+		return "", fmt.Errorf("can not find area path for user %s", Worker.Id)
+	} else if ok {
+		return path, nil
+	}
+
+	//todo: test
+	Team, err := azureDevopsAPI.GetWorkerTeamId(Worker.Id)
+	if err != nil {
+		return "", err
+	}
+
+	response, err := azureDevopsAPI.WorkClient.GetTeamFieldValues(&Team)
+	if err != nil {
+		return "", err
+	}
+	return *(*response.Values)[0].Value, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetWorkerByName(workerName string) (*human_api_types.Worker, error) {
+	workerNameSpaceParts := strings.Split(workerName, " ")
+	workerNameParts := []string{}
+	for _, workerNameSpacePart := range workerNameSpaceParts {
+		workerNameDotParts := strings.Split(workerNameSpacePart, ".")
+		for _, workerNameDotPart := range workerNameDotParts {
+			workerNameParts = append(workerNameParts, strings.ToLower(workerNameDotPart))
+		}
+	}
+
+	workers, err := azureDevopsAPI.GraphClient.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+
+	returnGraphUsers := []*graph.GraphUser{}
+	for _, worker := range workers {
+		lowerDisplayName := strings.ToLower(*worker.DisplayName)
+		found := true
+		for _, part := range workerNameParts {
+			if !strings.Contains(lowerDisplayName, part) {
+				found = false
+				break
+			}
+		}
+		if found {
+			returnGraphUsers = append(returnGraphUsers, &worker)
+		}
+	}
+	if len(returnGraphUsers) > 1 {
+		userNames := []string{}
+		for _, returnGraphUser := range returnGraphUsers {
+			userNames = append(userNames, *returnGraphUser.DisplayName)
+		}
+		return nil, fmt.Errorf("found [%s] users using source name: '%s'", strings.Join(userNames, ", "), workerName)
+	}
+
+	if len(returnGraphUsers) == 0 {
+		return nil, fmt.Errorf("can not find user using source name: '%s'", workerName)
+	}
+
+	ret := human_api_types.Worker{Id: *returnGraphUsers[0].MailAddress, Name: *returnGraphUsers[0].DisplayName, SystemName: *returnGraphUsers[0].PrincipalName}
+	return &ret, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetWorkerTeamId(workerID string) (string, error) {
+	value, ok := azureDevopsAPI.Configuration.TeamIdByUserId[workerID]
+	if ok {
+		return value, nil
+	}
+
+	fmt.Printf("Was not able to find team by worker id: %s", workerID)
+
+	//todo:
+	teams, err := azureDevopsAPI.CoreClient.GetTeams()
+	if err != nil {
+		return "", err
+	}
+	foundTeams := []string{}
+	for _, team := range teams {
+		members, err := azureDevopsAPI.CoreClient.GetTeamMembers(common_utils.StrPTR((*team.Id).String()))
+		if err != nil {
+			log.Printf("Warning: Could not get members for team '%s', '%s': %v", *team.Name, *team.Id, err)
+			continue
+		}
+
+		// 3. Check if the workerID is in the member list
+		for _, member := range *members {
+			if member.Identity != nil && member.Identity.Id != nil && *member.Identity.Id == workerID {
+				foundTeams = append(foundTeams, *team.Name)
+				break // Found the user, no need to check other members of this team
+			}
+		}
+	}
+
+	return foundTeams[0], nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) UpdateWit(requestDict map[string]string) error {
+	req, err := azureDevopsAPI.GenerateUpdateWitRequest(requestDict)
+	if err != nil {
+		log.Printf("received error in Generate Create Wit Request: %v", err)
+		return err
+	}
+	return Patch(req)
+
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GenerateUpdateWitRequest(requestDict map[string]string) (*http.Request, error) {
+
+	ctx := context.Background()
+	postList := []map[string]string{}
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.AreaPath",
+		"value": requestDict["AreaPath"],
+	})
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.Title",
+		"value": requestDict["Title"],
+	})
+
+	if requestDict["Priority"] != "-1" {
+		postList = append(postList, map[string]string{
+			"op":    "add",
+			"path":  "/fields/Microsoft.VSTS.Common.Priority",
+			"value": requestDict["Priority"],
+		})
+	}
+
+	iteration, err := azureDevopsAPI.GetIteration()
+	if err != nil {
+		return nil, err
+	}
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.IterationPath",
+		"value": *iteration.Path,
+	})
+
+	err = fillUpdateWitRequestTimes(&postList, requestDict)
+	if err != nil {
+		return nil, err
+	}
+
+	postList = append(postList, map[string]string{
+		"op":    "add",
+		"path":  "/fields/System.AssignedTo",
+		"value": requestDict["WorkerID"],
+	})
+
+	postData, err := json.Marshal(postList)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling JSON: %v", err)
+	}
+	fmt.Printf("Updating Azure Devops WorkITem  : %v\n", requestDict)
+
+	req, err := azureDevopsAPI.CreateRequest(ctx, fmt.Sprintf("wit/workitems/%s?api-version=7.0", requestDict["Id"]), http.MethodPatch, bytes.NewBuffer(postData), "application/json-patch+json")
+
+	return req, err
 }

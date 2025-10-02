@@ -1,16 +1,15 @@
 package main
 
 import (
-	"os"
-
 	actionManager "github.com/AlexeyBeley/go_misc/action_manager"
-	common_utils "github.com/AlexeyBeley/go_misc/common_utils"
+	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
 	humanAPI "github.com/AlexeyBeley/go_misc/human_api"
 	humanAPISlackServer "github.com/AlexeyBeley/go_misc/human_api/slack_server"
 	"github.com/AlexeyBeley/go_misc/logger"
 )
 
 var lg = &(logger.Logger{})
+var GlobalSlackServerConfigurationFilePath = "/opt/human_api/slack_server_configuration.json"
 
 func main() {
 
@@ -24,9 +23,7 @@ func main() {
 		panic(err)
 	}
 
-	token := os.Getenv("SLACK_APP_TOKEN")
-
-	server := humanAPISlackServer.SlackServerNew(nil, common_utils.StrPTR(token))
+	server := humanAPISlackServer.SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
 	(*actionManager).ActionMap = map[string]any{
 		"TicketAction":   humanApi.TicketAction,
 		"SlackBotServer": server.Start}
