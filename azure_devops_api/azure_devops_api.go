@@ -1403,15 +1403,16 @@ func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobjec
 
 func (azureDevopsAPI *AzureDevopsAPI) GetAreaPath(Worker *human_api_types.Worker) (string, error) {
 
-	path, ok := azureDevopsAPI.Configuration.AreaPathByUserId[Worker.Id]
+	WorkerID := strings.ToLower(Worker.Id)
+	path, ok := azureDevopsAPI.Configuration.AreaPathByUserId[WorkerID]
 	if !ok {
-		return "", fmt.Errorf("can not find area path for user %s", Worker.Id)
+		return "", fmt.Errorf("can not find area path for user %s", WorkerID)
 	} else if ok {
 		return path, nil
 	}
 
 	//todo: test
-	Team, err := azureDevopsAPI.GetWorkerTeamId(Worker.Id)
+	Team, err := azureDevopsAPI.GetWorkerTeamId(WorkerID)
 	if err != nil {
 		return "", err
 	}
@@ -1469,6 +1470,7 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorkerByName(workerName string) (*human
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GetWorkerTeamId(workerID string) (string, error) {
+	workerID = strings.ToLower(workerID)
 	value, ok := azureDevopsAPI.Configuration.TeamIdByUserId[workerID]
 	if ok {
 		return value, nil
