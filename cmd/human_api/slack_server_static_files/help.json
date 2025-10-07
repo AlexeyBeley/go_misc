@@ -12,7 +12,7 @@
       "block_id": "title_input_block",
       "element": {
         "type": "plain_text_input",
-        "action_id": "input_plain_text_title"
+        "action_id": "title_input"
       },
       "label": {
         "type": "plain_text",
@@ -24,7 +24,7 @@
       "block_id": "description_input_block",
       "element": {
         "type": "plain_text_input",
-        "action_id": "input_plain_text_description",
+        "action_id": "description_input",
         "multiline": true
       },
       "label": {
@@ -42,13 +42,13 @@
       },
       "element": {
         "type": "static_select",
-        "action_id": "input_select_wobject_type",
+        "action_id": "select_type",
         "initial_option": {
           "text": {
             "type": "plain_text",
             "text": "Bug"
           },
-          "value": "Bug"
+          "value": "bug"
         },
         "options": [
           {
@@ -56,14 +56,50 @@
               "type": "plain_text",
               "text": "Task"
             },
-            "value": "Task"
+            "value": "task"
           },
           {
             "text": {
               "type": "plain_text",
               "text": "Bug"
             },
-            "value": "Bug"
+            "value": "bug"
+          }
+        ]
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "team_select_block",
+      "optional": true,
+      "label": {
+        "type": "plain_text",
+        "text": "Select team"
+      },
+      "element": {
+        "type": "static_select",
+        "action_id": "select_team",
+        "initial_option": {
+          "text": {
+            "type": "plain_text",
+            "text": "Infra"
+          },
+          "value": "infra"
+        },
+        "options": [
+          {
+            "text": {
+              "type": "plain_text",
+              "text": "Infra"
+            },
+            "value": "infra"
+          },
+          {
+            "text": {
+              "type": "plain_text",
+              "text": "Dev"
+            },
+            "value": "dev"
           }
         ]
       }
@@ -78,13 +114,13 @@
       },
       "element": {
         "type": "static_select",
-        "action_id": "input_select_wobject_status",
+        "action_id": "select_status",
         "initial_option": {
           "text": {
             "type": "plain_text",
             "text": "New"
           },
-          "value": "New"
+          "value": "new"
         },
         "options": [
           {
@@ -92,28 +128,14 @@
               "type": "plain_text",
               "text": "New"
             },
-            "value": "New"
+            "value": "new"
           },
           {
             "text": {
               "type": "plain_text",
               "text": "Active"
             },
-            "value": "Active"
-          },
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Blocked"
-            },
-            "value": "Blocked"
-          },
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Closed"
-            },
-            "value": "Closed"
+            "value": "active"
           }
         ]
       }
@@ -128,7 +150,7 @@
       },
       "element": {
         "type": "users_select",
-        "action_id": "input_select_wobject_assignee",
+        "action_id": "select_assignee",
         "initial_user": "STRING_REPLACEMENT_INITIAL_USER"
       }
     },

@@ -26,6 +26,9 @@ RUN mkdir -p /opt/human_api
 COPY --from=builder /app/cmd/human_api/my-app .
 COPY --from=builder /app/cmd/human_api/slack_server_static_files /opt/human_api/slack_server_static_files
 COPY --from=builder  /app/slack_server_configuration.json /opt/human_api/slack_server_configuration.json
+COPY --from=builder  /app/slack_api_configuration.json /opt/slack_api/configuration.json
+COPY --from=builder  /app/azure_devops_api_configuration.json /opt/azure_devops_api/configuration.json
+
 
 # Expose the port that your Go application listens on
 EXPOSE 8080

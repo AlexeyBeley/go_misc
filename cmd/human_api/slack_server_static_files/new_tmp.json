@@ -1,0 +1,72 @@
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "New WObject"
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "title_input_block",
+      "element": {
+        "type": "plain_text_input",
+        "action_id": "input_plain_text_title"
+      },
+      "label": {
+        "type": "plain_text",
+        "text": "Title"
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "description_input_block",
+      "element": {
+        "type": "plain_text_input",
+        "action_id": "input_plain_text_description",
+        "multiline": true
+      },
+      "label": {
+        "type": "plain_text",
+        "text": "Description"
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "type_select_block",
+      "optional": true,
+      "label": {
+        "type": "plain_text",
+        "text": "Select type"
+      },
+      "element": {
+        "type": "static_select",
+        "action_id": "input_select_wobject_type",
+        "initial_option": {
+          "text": {
+            "type": "plain_text",
+            "text": "Bug"
+          },
+          "value": "Bug"
+        },
+        "options": [
+          {
+            "text": {
+              "type": "plain_text",
+              "text": "Task"
+            },
+            "value": "Task"
+          },
+          {
+            "text": {
+              "type": "plain_text",
+              "text": "Bug"
+            },
+            "value": "Bug"
+          }
+        ]
+      }
+    }
+  ]
+}

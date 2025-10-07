@@ -19,6 +19,7 @@ type Wobject struct {
 	Status       string    `json:"Status"`
 	Sprint       string    `json:"Sprint"`
 	Type         string    `json:"Type"`
+	Link         string    `json:"Link"`
 }
 
 func (wobject *Wobject) GuessPriorityForRequestDict() string {
@@ -59,6 +60,9 @@ func (wobject *Wobject) ConverttotMap() (map[string]string, error) {
 	}
 	ret["Status"] = wobject.Status
 	ret["Type"] = wobject.Type
+	if wobject.Link != "" {
+		ret["Link"] = wobject.Link
+	}
 
 	return ret, nil
 }

@@ -17,6 +17,7 @@ import (
 	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
 	human_api "github.com/AlexeyBeley/go_misc/human_api"
 	human_api_types "github.com/AlexeyBeley/go_misc/human_api_types/v1"
+	slack_api "github.com/AlexeyBeley/go_misc/slack_api"
 )
 
 type Configuration struct {
@@ -25,11 +26,13 @@ type Configuration struct {
 	VerificationToken                   *string
 	AzureDevopsAPIConfigurationFilePath *string
 	HumanAPIConfigurationFilePath       *string
+	SlackAPIConfigurationFilePath       *string
 }
 
 type SlackServer struct {
 	Configuration *Configuration
 	humanAPI      *human_api.HumanAPI
+	slackAPI      *slack_api.SlackAPI
 }
 
 func SlackServerNew(options ...config_pol.Option) *SlackServer {
@@ -135,101 +138,163 @@ func (slackServer *SlackServer) hapiInteractive(w http.ResponseWriter, r *http.R
 }
 
 func (slackServer *SlackServer) handleInteractivePayload(payload string) error {
-	request := new(map[string]any)
-	json.Unmarshal([]byte(payload), request)
-
-	if token, ok := (*request)["token"]; !ok || token != slackServer.Configuration.VerificationToken {
-		return fmt.Errorf("Error handling request Slack App: %s", "token iether wrong or does not present")
-
+	request := InteractiveRequest{}
+	err := json.Unmarshal([]byte(payload), &request)
+	if err != nil {
+		return err
 	}
 
-	responseUrlAny := (*request)["response_url"]
-	responseUrl, ok := responseUrlAny.(string)
-	if !ok {
-		return fmt.Errorf("response_url is not a valid string %v", *request)
-	}
-	actionsAny, ok := (*request)["actions"]
-	if !ok {
-		return fmt.Errorf("can not find key 'actions' in %v", *request)
-	}
-
-	actionList, ok := actionsAny.([]any)
-
-	if !ok {
-		return fmt.Errorf("interface conversion: actionsAny is %T, not []map[string]any", actionsAny)
-	}
-
-	actions := []map[string]any{}
-	for _, actionListItemAny := range actionList {
-		actionListItem, ok := actionListItemAny.(map[string]any)
-		if !ok {
-			return fmt.Errorf("was not able to convert %v", actionListItemAny)
-		}
-		actions = append(actions, actionListItem)
-
+	if request.Token != *slackServer.Configuration.VerificationToken {
+		log.Printf("error handling request Slack App: Received oken %s does not match expected: %s", request.Token, *slackServer.Configuration.VerificationToken)
+		return fmt.Errorf("error handling request Slack App: %s", "Wrong token")
 	}
 
 	actionId := ""
-	currentUser := (*request)["user"]
-	currentUserMap, ok := currentUser.(map[string]any)
-	if !ok {
-		return fmt.Errorf("currentUser %T, not map", currentUser)
-	}
+	for _, action := range request.Actions {
 
-	currentUserID, ok := currentUserMap["id"].(string)
-	if !ok {
-		return fmt.Errorf("interface conversion: currentUserMap[id] is %T, not string", currentUserMap)
-	}
-
-	for _, action := range actions {
-		actionIdAny, ok := action["action_id"]
-		if !ok {
-			return fmt.Errorf("can not find key 'action_id' in %v", action)
-		}
-
-		actionIdTmp, ok := actionIdAny.(string)
-
-		if !ok {
-			return fmt.Errorf("interface conversion: actionIdAny is %T, not string", actionIdAny)
-		}
-
-		if strings.Contains(actionIdTmp, "->") {
+		if strings.Contains(action.ActionID, "->") {
 			if actionId != "" {
-				return fmt.Errorf("action already initialized to '%s', trying to init new value '%s'", actionId, actionIdTmp)
+				return fmt.Errorf("action already initialized to '%s', trying to init new value '%s'", actionId, action.ActionID)
 			}
-			actionId = actionIdTmp
+			actionId = action.ActionID
 		}
 
 	}
 
 	if actionId == "" {
-		return fmt.Errorf("can not find action ID '%s'", actions)
+		return fmt.Errorf("can not find action ID '%v'", request.Actions)
 	}
 
-	var response map[string]any
-	var err error
+	var response slackBlockKitResponse
 
-	if actionId == "main->wobj" {
-		response, err = slackServer.LoadGenericMenu("slack_wobj.json")
-	} else if actionId == "main->wobj->create" {
-		response, err = slackServer.LoadGenericMenu("slack_wobj_create_new.json")
-	} else if actionId == "main->wobj->create->submit" {
-		response, err = slackServer.LoadGenericMenu("slack_wobj_create_submit.json")
-	} else if actionId == "main->help" {
-		response, err = slackServer.LoadGenericMenu("tmp.json", currentUserID)
-	} else {
+	switch actionId {
+	case "main->wobj":
+		response, err = slackServer.LoadGenericMenu("slack_wobj.json", nil)
+	case "main->wobj->create":
+		response, err = slackServer.LoadGenericMenu("slack_wobj_create_new.json", &map[string]string{"STRING_REPLACEMENT_INITIAL_USER": request.User.ID})
+	case "main->wobj->create->submit":
+		response, err = slackServer.HandleProvisionWobjectRequest(request)
+	case "main->help":
+		response, err = slackServer.LoadGenericMenu("help.json", &map[string]string{"STRING_REPLACEMENT_INITIAL_USER": request.User.ID})
+	default:
 		return fmt.Errorf("unknown action ID %s", actionId)
 	}
 
 	if err != nil {
 		return fmt.Errorf("error handling actionId %s", actionId)
 	}
-	//response["trigger_id"] = triggerID
-	err = slackServer.sendResponseUrlMessage(responseUrl, response)
+
+	err = slackServer.sendResponseUrlMessage(request.ResponseURL, response)
 	if err != nil {
-		return fmt.Errorf("handleInteractivePayload failed to send response %v to url %s, with error: %w ", response, responseUrl, err)
+		return fmt.Errorf("handleInteractivePayload failed to send response %v to url %s, with error: %w ", response, request.ResponseURL, err)
 	}
 	return nil
+}
+
+func (slackServer *SlackServer) HandleProvisionWobjectRequest(request InteractiveRequest) (response slackBlockKitResponse, err error) {
+	menu, err := slackServer.LoadIneractiveMenu("slack_wobj_create_new.json", &map[string]string{"STRING_REPLACEMENT_INITIAL_USER": request.User.ID})
+	if err != nil {
+		return response, err
+	}
+
+	mapValues := map[string]string{}
+	for blockID, value := range request.State.Values {
+		fmt.Printf("Checking block: %s\n", blockID)
+		for actionKey, interactiveRequestStateValue := range value {
+			switch interactiveRequestStateValue.Type {
+			case "static_select":
+				mapValues[actionKey] = interactiveRequestStateValue.SelectedOption.Value
+			case "plain_text_input":
+				mapValues[actionKey] = interactiveRequestStateValue.Value
+			case "users_select":
+				mapValues[actionKey] = interactiveRequestStateValue.SelectedUser
+			default:
+				return response, fmt.Errorf("Unknown StateValue.Type: %s", interactiveRequestStateValue.Type)
+			}
+		}
+	}
+
+	for _, defaultBlock := range menu.Blocks {
+		if defaultBlock.Type != "input" {
+			continue
+		}
+
+		_, ok := mapValues[defaultBlock.Element.ActionID]
+		if !ok {
+			switch defaultBlock.Element.Type {
+			case "users_select":
+				mapValues[defaultBlock.Element.ActionID] = defaultBlock.Element.InitialUser
+			case "static_select":
+				mapValues[defaultBlock.Element.ActionID] = defaultBlock.Element.InitialOption.Value
+			case "plain_text_input":
+				return response, fmt.Errorf("input Element type plain_text_input has to be filled by user, in received block %s", defaultBlock.BlockID)
+			default:
+				return response, fmt.Errorf("unknown Element type %s in received block %s", defaultBlock.Element.Type, defaultBlock.BlockID)
+			}
+
+		}
+	}
+
+	err = slackServer.slackAPIInit()
+	if err != nil {
+		return response, err
+	}
+	User, err := slackServer.slackAPI.GetUser(mapValues["input_select_wobject_assignee"])
+	if err != nil {
+		fmt.Printf("Error: was not able to find user: '%s', with error: %v", mapValues["input_select_wobject_assignee"], err)
+		return response, err
+	}
+
+	fmt.Printf("Request filled mapValues: %v\n", mapValues)
+	wobject := human_api_types.Wobject{}
+	wobject.WorkerID = User.Name
+
+	wobject.Title = mapValues["input_plain_text_title"]
+	wobject.Description = mapValues["input_plain_text_description"]
+	wobject.Type = mapValues["input_select_wobject_type"]
+	wobject.Status = mapValues["input_select_wobject_status"]
+
+	err = slackServer.ProvisionWobject(&wobject)
+	if err != nil {
+		log.Printf("Error received when creating the wobject: %v", err)
+		return response, err
+	}
+
+	ticketLink := fmt.Sprintf("<%s|%s-%s>", wobject.Link, wobject.Type, wobject.Id)
+	messageText := fmt.Sprintf("✅ Successfully created wobject!\n*%s: %s*", ticketLink, wobject.Title)
+
+	// 6. Construct the Block Kit payload
+	response = slackBlockKitResponse{
+		ResponseType: "in_channel", // Makes the message visible to everyone in the channel
+		Blocks: []block{
+			{
+				Type: "section",
+				Text: blockText{
+					Type: "mrkdwn",
+					Text: messageText,
+				},
+			},
+		},
+	}
+	return response, nil
+
+}
+
+func (slackServer *SlackServer) LoadIneractiveMenu(menuFileName string, replacements *map[string]string) (menu *slackBlockKitResponse, err error) {
+	fullPath := filepath.Join(*slackServer.Configuration.SlackBlockKitDirPath, menuFileName)
+	menu = &slackBlockKitResponse{}
+
+	jsonDataString, err := slackServer.loadFileWithReplacements(fullPath, replacements)
+	if err != nil {
+		log.Printf("error loading interactive menu from file %s: %v, file: %s", fullPath, err, jsonDataString)
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(jsonDataString), menu)
+	if err != nil {
+		log.Printf("Error unmarshalling interactive menu: %v", err)
+	}
+	return menu, err
 }
 
 func (slackServer *SlackServer) hapiMain(w http.ResponseWriter, r *http.Request) {
@@ -254,11 +319,26 @@ func (slackServer *SlackServer) hapiMain(w http.ResponseWriter, r *http.Request)
 	}
 
 	statusCode := http.StatusOK
-	var responseAny map[string]any
 
-	if token, ok := data["token"]; !ok || token != slackServer.Configuration.VerificationToken {
-		responseAny = map[string]any{"Error handling request": "Slack App token iether wrong or does not present"}
-		statusCode = http.StatusBadRequest
+	tokenAny, ok := data["token"]
+	if !ok {
+		http.Error(w, "Error handling request, Slack App Any-token iether wrong or does not present", http.StatusBadRequest)
+		log.Printf("Error in received AnyToken. Can not convert to string: %v", tokenAny)
+		return
+	}
+
+	token, ok := tokenAny.(string)
+	if !ok {
+		http.Error(w, "Error handling request, Slack App String-token", http.StatusBadRequest)
+		log.Printf("Error parsing TokenAny: %v, to TokenString %v", tokenAny, token)
+		return
+	}
+
+	if token != *slackServer.Configuration.VerificationToken {
+		http.Error(w, "Error handling request, Slack App String-token iether wrong or does not present", http.StatusBadRequest)
+		log.Printf("Error in received StringToken: '%s',  Does not equal configured: '%s'", token, *slackServer.Configuration.VerificationToken)
+		return
+
 	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
@@ -274,59 +354,91 @@ func (slackServer *SlackServer) hapiMain(w http.ResponseWriter, r *http.Request)
 	text = strings.TrimLeftFunc(text, unicode.IsSpace)
 
 	var err error
-
+	var response slackBlockKitResponse
 	domain := strings.Split(text, " ")[0]
 	if text != "" {
 		log.Printf("Handling text '%s'", text)
 	}
 	switch domain {
 	case "":
-		responseAny, err = slackServer.LoadGenericMenu("slack_main.json")
+		response, err = slackServer.LoadGenericMenu("slack_main.json", nil)
 	case "wobj":
 		text = text[len("wobj"):]
 		text = strings.TrimLeftFunc(text, unicode.IsSpace)
-		responseAny, err = slackServer.wobjHandler(text)
-	case "help":
-		responseAny = map[string]any{"help": "Show this menu",
-			"wobj init": "Init wobject sample for submitting"}
+		response, err = slackServer.wobjHandler(text)
 	default:
-		err = fmt.Errorf("unknown request: %s", text)
-		responseAny = map[string]any{"error": fmt.Sprintf("Unknown domain: %s", domain)}
+		http.Error(w, fmt.Sprintf("Unknown domain: %s", domain), http.StatusBadRequest)
+		log.Printf("Unknown domain: %s", domain)
+		return
 	}
 
 	if err != nil {
-		responseAny = map[string]any{"Error handling request": fmt.Sprintf("%v", err)}
+		response = slackServer.GenerateErrorResponse("Error handling request" + fmt.Sprintf("%v", err))
 		statusCode = http.StatusBadRequest
 	}
+	slackServer.SendResponse(w, statusCode, response)
+}
 
-	log.Printf("Returning response to client statusCode: %d, responseAny: %v", statusCode, responseAny)
+func (slackServer *SlackServer) GenerateErrorResponse(errMessage string) slackBlockKitResponse {
+
+	//ticketLink := fmt.Sprintf("<http://your-ticketing-system.com/tickets/%d|TICKET-%d>", ticketID, ticketID)
+	messageText := fmt.Sprintf("❌ Error handlig request!\n*%s*", errMessage)
+
+	// 6. Construct the Block Kit payload
+	response := slackBlockKitResponse{
+		ResponseType: "in_channel", // Makes the message visible to everyone in the channel
+		Blocks: []block{
+			{
+				Type: "section",
+				Text: blockText{
+					Type: "mrkdwn",
+					Text: messageText,
+				},
+			},
+		},
+	}
+	return response
+}
+
+func (slackServer *SlackServer) SendResponse(w http.ResponseWriter, statusCode int, response slackBlockKitResponse) (err error) {
+
+	log.Printf("Returning response to client statusCode: %d, responseAny: %v", statusCode, response)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	if err := json.NewEncoder(w).Encode(responseAny); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "Error encoding response", http.StatusBadRequest)
 	}
-
+	return err
 }
 
-func (slackServer *SlackServer) LoadGenericMenu(fileName string, replacements ...any) (response map[string]any, err error) {
-	response, err = slackServer.loadJsonFile(fileName, replacements...)
-	if err != nil {
-		return nil, err
+func (slackServer *SlackServer) LoadGenericMenu(fileName string, replacements *map[string]string) (response slackBlockKitResponse, err error) {
 
+	fullPath := filepath.Join(*slackServer.Configuration.SlackBlockKitDirPath, fileName)
+	jsonDataString, err := slackServer.loadFileWithReplacements(fullPath, replacements)
+	if err != nil {
+		log.Printf("Error reading file %s: %v, file: %s", fullPath, err, jsonDataString)
+		return response, err
 	}
+	response = slackBlockKitResponse{}
+	err = json.Unmarshal([]byte(jsonDataString), &response)
+	if err != nil {
+		log.Printf("Error Unmarshalling file: %s", jsonDataString)
+		return response, err
+	}
+
 	log.Printf("Successfully loaded Generic Menu %s", fileName)
+	response.ResponseType = "in_channel"
 	return response, nil
 }
 
-func (slackServer *SlackServer) wobjHandler(text string) (response map[string]any, err error) {
+func (slackServer *SlackServer) wobjHandler(text string) (response slackBlockKitResponse, err error) {
 	command := strings.Split(text, " ")[0]
 	log.Printf("Handling command '%s'", command)
 	if command == "menu" {
-		// todo: response, err = slackServer.LoadGenericMenu("slack_wobj.json")
-		response, err = slackServer.LoadGenericMenu("slack_wobj.json")
+		response, err = slackServer.LoadGenericMenu("slack_wobj.json", nil)
 	} else {
 		err = fmt.Errorf("unknown command: %s", command)
 	}
@@ -334,26 +446,58 @@ func (slackServer *SlackServer) wobjHandler(text string) (response map[string]an
 	return response, err
 }
 
-func (slackServer *SlackServer) loadJsonFile(fileName string, replacements ...any) (map[string]any, error) {
-	fullPath := filepath.Join(*slackServer.Configuration.SlackBlockKitDirPath, fileName)
+func (slackServer *SlackServer) loadFileWithReplacements(fullPath string, replacements *map[string]string) (jsonDataString string, err error) {
 	jsonData, err := os.ReadFile(fullPath)
 	if err != nil {
 		log.Printf("error reading file %s: %v", fullPath, err)
-		return nil, err
+		return "", err
 	}
 
-	jsonDataString := fmt.Sprintf(string(jsonData), replacements...)
+	jsonDataString = string(jsonData)
+	if replacements != nil {
+		for key, val := range *replacements {
+			jsonDataString = strings.ReplaceAll(jsonDataString, key, val)
+		}
+	}
+	return jsonDataString, err
+}
 
+func (slackServer *SlackServer) loadJsonFile(fileName string, replacements *map[string]string) (map[string]any, error) {
+	fullPath := filepath.Join(*slackServer.Configuration.SlackBlockKitDirPath, fileName)
+	jsonDataString, err := slackServer.loadFileWithReplacements(fullPath, replacements)
+	if err != nil {
+		log.Printf("error reading file %s: %v, file: %s", fullPath, err, jsonDataString)
+		return nil, err
+	}
 	var result map[string]any
 	err = json.Unmarshal([]byte(jsonDataString), &result)
 	if err != nil {
-		log.Printf("error unmarshalling file %s: %v", fullPath, err)
+		log.Printf("error unmarshalling file %s: %v, file: %s", fullPath, err, jsonDataString)
 		return nil, err
 	}
 	return result, nil
 }
 
-func (slackServer *SlackServer) sendResponseUrlMessage(responseUrl string, payload map[string]any) error {
+func (slackServer *SlackServer) sendResponseUrlMessage(responseUrl string, response slackBlockKitResponse) error {
+	log.Printf("Sending response using POST: %v", response)
+	jsonMessage, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error marshalling response: %v", err)
+		return err
+	}
+
+	// 7. Send the message to the response_url
+	resp, err := http.Post(responseUrl, "application/json", bytes.NewBuffer(jsonMessage))
+	if err != nil {
+		log.Printf("Error sending success response: %v", err)
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func (slackServer *SlackServer) sendResponseUrlMessageOld(responseUrl string, payload map[string]any) error {
+
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON payload: %w", err)
@@ -388,33 +532,6 @@ func (slackServer *SlackServer) sendResponseUrlMessage(responseUrl string, paylo
 	return nil
 }
 
-// BlockKitMessage is a struct representing a simplified Block Kit message
-type BlockKitMessage struct {
-	Blocks []map[string]any `json:"blocks"`
-}
-
-func createResponseUrlPayload(actionID string, userSelection string) *BlockKitMessage {
-	headerBlock := map[string]any{
-		"type": "header",
-		"text": map[string]any{
-			"type": "plain_text",
-			"text": "Your selection has been submitted.",
-		},
-	}
-
-	sectionBlock := map[string]any{
-		"type": "section",
-		"text": map[string]any{
-			"type": "mrkdwn",
-			"text": fmt.Sprintf("You selected `%s` from action `%s`.", userSelection, actionID),
-		},
-	}
-
-	return &BlockKitMessage{
-		Blocks: []map[string]any{headerBlock, sectionBlock},
-	}
-}
-
 // Ticket represents the data for a submission modal.
 type Ticket struct {
 	Type        string
@@ -447,6 +564,16 @@ func (slackServer *SlackServer) WobjectModalHandler(w http.ResponseWriter, r *ht
 	return true
 }
 
+func (slackServer *SlackServer) slackAPIInit() error {
+	api, err := slack_api.SlackAPINew(config_pol.WithConfigurationFile(slackServer.Configuration.SlackAPIConfigurationFilePath))
+
+	if err != nil {
+		return err
+	}
+	slackServer.slackAPI = api
+	return nil
+}
+
 func (slackServer *SlackServer) humanAPIInit() error {
 	ProjectManagerAPI, err := azure_devops_api.AzureDevopsAPINew(config_pol.WithConfigurationFile(slackServer.Configuration.AzureDevopsAPIConfigurationFilePath))
 	if err != nil {
@@ -474,4 +601,153 @@ func (slackServer *SlackServer) ProvisionWobject(WorkObject *human_api_types.Wob
 	}
 	return nil
 
+}
+
+type slackBlockKitResponse struct {
+	ResponseType string  `json:"response_type"`
+	Blocks       []block `json:"blocks"`
+}
+
+type block struct {
+	Type     string    `json:"type"`
+	BlockID  string    `json:"block_id,omitempty"`
+	Optional bool      `json:"optional,omitempty"`
+	Label    blockText `json:"label,omitzero"`
+	Text     blockText `json:"text,omitzero"`
+	Element  Element   `json:"element,omitzero"`
+	Elements []Element `json:"elements,omitzero"`
+}
+
+type blockText struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type Element struct {
+	Type          string    `json:"type"`
+	Text          blockText `json:"text,omitzero"`
+	ActionID      string    `json:"action_id,omitempty"`
+	Value         string    `json:"value,omitempty"`
+	InitialUser   string    `json:"initial_user,omitempty"`
+	InitialOption Option    `json:"initial_option,omitzero"`
+	Options       []Option  `json:"options,omitzero"`
+}
+
+type Option struct {
+	Value string    `json:"value"`
+	Text  blockText `json:"text,omitzero"`
+}
+
+// sendSuccessResponse builds the Block Kit message and posts it to the response_url.
+func (slackServer *SlackServer) sendSuccessResponse(responseURL string, ticketID int, ticketTitle string) {
+	// 5. Build the formatted message using markdown
+	ticketLink := fmt.Sprintf("<http://your-ticketing-system.com/tickets/%d|TICKET-%d>", ticketID, ticketID)
+	messageText := fmt.Sprintf("✅ Successfully created ticket!\n*%s: %s*", ticketLink, ticketTitle)
+
+	// 6. Construct the Block Kit payload
+	response := slackBlockKitResponse{
+		ResponseType: "in_channel", // Makes the message visible to everyone in the channel
+		Blocks: []block{
+			{
+				Type: "section",
+				Text: blockText{
+					Type: "mrkdwn",
+					Text: messageText,
+				},
+			},
+		},
+	}
+
+	jsonMessage, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error marshalling response: %v", err)
+		return
+	}
+
+	// 7. Send the message to the response_url
+	resp, err := http.Post(responseURL, "application/json", bytes.NewBuffer(jsonMessage))
+	if err != nil {
+		log.Printf("Error sending success response: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// InteractiveRequest is the top-level struct for the entire request.
+type InteractiveRequest struct {
+	Token               string                      `json:"token"`
+	Type                string                      `json:"type"`
+	User                InteractiveRequestUser      `json:"user"`
+	APIAppID            string                      `json:"api_app_id"`
+	Container           InteractiveRequestContainer `json:"container"`
+	TriggerID           string                      `json:"trigger_id"`
+	Team                InteractiveRequestTeam      `json:"team"`
+	IsEnterpriseInstall bool                        `json:"is_enterprise_install"`
+	Channel             InteractiveRequestChannel   `json:"channel"`
+	State               InteractiveRequestState     `json:"state"`
+	ResponseURL         string                      `json:"response_url"`
+	Actions             []InteractiveRequestAction  `json:"actions"`
+	Message             any                         `json:"message"`
+}
+
+// InteractiveRequestUser represents the user who initiated the action.
+type InteractiveRequestUser struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	TeamID string `json:"team_id"`
+}
+
+// InteractiveRequestContainer holds information about where the interaction occurred.
+type InteractiveRequestContainer struct {
+	Type        string `json:"type"`
+	MessageTs   string `json:"message_ts"`
+	ChannelID   string `json:"channel_id"`
+	IsEphemeral bool   `json:"is_ephemeral"`
+}
+
+// InteractiveRequestTeam represents the Slack team.
+type InteractiveRequestTeam struct {
+	ID     string `json:"id"`
+	Domain string `json:"domain"`
+}
+
+// InteractiveRequestChannel represents the Slack channel.
+type InteractiveRequestChannel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// InteractiveRequestState contains the values of all input blocks.
+type InteractiveRequestState struct {
+	Values map[string]map[string]InteractiveRequestStateValue `json:"values"`
+}
+
+// InteractiveRequestStateValue holds the value of a single input element.
+type InteractiveRequestStateValue struct {
+	Type           string                   `json:"type"`
+	SelectedUser   string                   `json:"selected_user,omitempty"`
+	SelectedOption InteractiveRequestOption `json:"selected_option,omitzero"`
+	Value          string                   `json:"value,omitempty"`
+}
+
+type InteractiveRequestOption struct {
+	Text  InteractiveRequestText `json:"text"`
+	Value string                 `json:"value"`
+}
+
+// InteractiveRequestAction represents one of the actions triggered (e.g., a button click).
+type InteractiveRequestAction struct {
+	ActionID string                 `json:"action_id"`
+	BlockID  string                 `json:"block_id"`
+	Text     InteractiveRequestText `json:"text"`
+	Value    string                 `json:"value"`
+	Type     string                 `json:"button"`
+	ActionTs string                 `json:"action_ts"`
+}
+
+// InteractiveRequestText is a common object for text elements in Block Kit.
+type InteractiveRequestText struct {
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	Emoji bool   `json:"emoji,omitempty"`
 }

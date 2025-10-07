@@ -148,16 +148,6 @@
               "value": "active"
             }
           ]
-        },
-        {
-          "type": "users_select",
-          "placeholder": {
-            "type": "plain_text",
-            "text": "Select assignee",
-            "emoji": true
-          },
-          "action_id": "select_assignee",
-          "initial_user": "%s"
         }
       ]
     },

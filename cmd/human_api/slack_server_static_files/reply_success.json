@@ -1,0 +1,12 @@
+{
+    "response_type": "in_channel",
+    "blocks": [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "✅ Successfully created ticket!\n*<http://your-ticketing-system.com/tickets/12345|TICKET-12345>: Fix login button issue on homepage*"
+            }
+        }
+    ]
+}

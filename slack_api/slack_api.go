@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	config_pol "github.com/AlexeyBeley/go_misc/configuration_policy"
@@ -65,28 +64,28 @@ func (slackAPI *SlackAPI) GetUser(userID string) (*User, error) {
 	url := fmt.Sprintf("https://slack.com/api/users.info?user=%s", userID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatalf("Failed to create HTTP request: %s", err)
+		return nil, fmt.Errorf("failed to create HTTP request: %v", err)
 	}
 	req.Header.Add("Authorization", "Bearer "+slackAPI.Configuration.BotUserOAuthToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatalf("Failed to send HTTP request: %s", err)
+		return nil, fmt.Errorf("failed to send HTTP request: %s", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Failed to read response body: %s", err)
+		return nil, fmt.Errorf("failed to read response body: %s", err)
 	}
 
 	// 6. Decode the JSON response into our Go structs.
 	var userInfoResp UserInfoResponse
 	if err := json.Unmarshal(body, &userInfoResp); err != nil {
-		log.Fatalf("Failed to decode JSON response: %s", err)
+		return nil, fmt.Errorf("failed to decode JSON response: %s", err)
 	}
 	// 7. Check if the API call was successful.
 	if !userInfoResp.OK {
-		log.Fatalf("Slack API returned an error: %s", userInfoResp.Error)
+		return nil, fmt.Errorf("slack API returned an error: %s", userInfoResp.Error)
 	}
 	user := userInfoResp.User
 	return &user, nil

@@ -12,7 +12,7 @@ SERVICE_NAME := PlaceHolder
 
 
 test:
-	echo ${AWS_ACCOUNT_ID}
+	echo ${BUILD_DIR}
 
 init_build_dir:
 	@rm -rf $(BUILD_DIR)
@@ -23,6 +23,9 @@ copy_to_build: init_build_dir
 	@cp -r ${ROOT_DIR}/* ${BUILD_DIR}
 	@cp  ${CURRENT_DIR}/Dockerfile ${BUILD_DIR}
 	@cp /opt/human_api/slack_server_configuration.json ${BUILD_DIR}/slack_server_configuration.json
+	@cp /opt/slack_api/configuration.json ${BUILD_DIR}/slack_api_configuration.json 
+	@cp /opt/azure_devops_api/configuration.json ${BUILD_DIR}/azure_devops_api_configuration.json 
+	
 
 
 build_image: copy_to_build 

@@ -1,0 +1,267 @@
+{
+    "type": "block_actions",
+    "user": {
+        "id": "USERID",
+        "username": "alexey.beley",
+        "name": "alexey.beley",
+        "team_id": "TESTTEAMID"
+    },
+    "api_app_id": "TESTAPPID",
+    "token": "TESTTOKEN",
+    "container": {
+        "type": "message",
+        "message_ts": "1759773275.563469",
+        "channel_id": "TESTCHANID",
+        "is_ephemeral": false
+    },
+    "trigger_id": "12334.12345.ididid",
+    "team": {
+        "id": "TESTTEAMID",
+        "domain": "controlup"
+    },
+    "enterprise": null,
+    "is_enterprise_install": false,
+    "channel": {
+        "id": "TESTCHANID",
+        "name": "directmessage"
+    },
+    "message": {
+        "subtype": "bot_message",
+        "text": "New WObject Submit Selection button, with interactive elements",
+        "type": "message",
+        "ts": "1759773275.563469",
+        "edited": {
+            "user": "BOTIDTEST",
+            "ts": "1759773277.000000"
+        },
+        "bot_id": "BOTIDTEST",
+        "blocks": [
+            {
+                "type": "header",
+                "block_id": "gjhT3",
+                "text": {
+                    "type": "plain_text",
+                    "text": "New WObject",
+                    "emoji": true
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "title_input_block",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Title",
+                    "emoji": true
+                },
+                "optional": false,
+                "dispatch_action": false,
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "input_plain_text_title",
+                    "dispatch_action_config": {
+                        "trigger_actions_on": [
+                            "on_enter_pressed"
+                        ]
+                    }
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "description_input_block",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Description",
+                    "emoji": true
+                },
+                "optional": false,
+                "dispatch_action": false,
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "input_plain_text_description",
+                    "dispatch_action_config": {
+                        "trigger_actions_on": [
+                            "on_enter_pressed"
+                        ]
+                    }
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "type_select_block",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Select type",
+                    "emoji": true
+                },
+                "optional": true,
+                "dispatch_action": false,
+                "element": {
+                    "type": "static_select",
+                    "action_id": "input_select_wobject_type",
+                    "initial_option": {
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Bug",
+                            "emoji": true
+                        },
+                        "value": "Bug"
+                    },
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Task",
+                                "emoji": true
+                            },
+                            "value": "Task"
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Bug",
+                                "emoji": true
+                            },
+                            "value": "Bug"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "status_select_block",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Select status",
+                    "emoji": true
+                },
+                "optional": true,
+                "dispatch_action": false,
+                "element": {
+                    "type": "static_select",
+                    "action_id": "input_select_wobject_status",
+                    "initial_option": {
+                        "text": {
+                            "type": "plain_text",
+                            "text": "New",
+                            "emoji": true
+                        },
+                        "value": "New"
+                    },
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "New",
+                                "emoji": true
+                            },
+                            "value": "New"
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Active",
+                                "emoji": true
+                            },
+                            "value": "active"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "assignee_select_block",
+                "label": {
+                    "type": "plain_text",
+                    "text": "Select assignee",
+                    "emoji": true
+                },
+                "optional": true,
+                "dispatch_action": false,
+                "element": {
+                    "type": "users_select",
+                    "action_id": "input_select_wobject_assignee",
+                    "initial_user": "USERTESTID"
+                }
+            },
+            {
+                "type": "actions",
+                "block_id": "submit_actions_block",
+                "elements": [
+                    {
+                        "type": "button",
+                        "action_id": "main->wobj->create->submit",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Submit Selection",
+                            "emoji": true
+                        },
+                        "value": "submit_selection"
+                    }
+                ]
+            }
+        ]
+    },
+    "state": {
+        "values": {
+            "title_input_block": {
+                "input_plain_text_title": {
+                    "type": "plain_text_input",
+                    "value": "sdasf"
+                }
+            },
+            "description_input_block": {
+                "input_plain_text_description": {
+                    "type": "plain_text_input",
+                    "value": "sadasf"
+                }
+            },
+            "type_select_block": {
+                "input_select_wobject_type": {
+                    "type": "static_select",
+                    "selected_option": {
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Task",
+                            "emoji": true
+                        },
+                        "value": "Task"
+                    }
+                }
+            },
+            "status_select_block": {
+                "input_select_wobject_status": {
+                    "type": "static_select",
+                    "selected_option": {
+                        "text": {
+                            "type": "plain_text",
+                            "text": "New",
+                            "emoji": true
+                        },
+                        "value": "New"
+                    }
+                }
+            },
+            "assignee_select_block": {
+                "input_select_wobject_assignee": {
+                    "type": "users_select",
+                    "selected_user": "USERTESTID"
+                }
+            }
+        }
+    },
+    "response_url": "https://hooks.slack.com/actions/Tasd134124",
+    "actions": [
+        {
+            "action_id": "main->wobj->create->submit",
+            "block_id": "submit_actions_block",
+            "text": {
+                "type": "plain_text",
+                "text": "Submit Selection",
+                "emoji": true
+            },
+            "value": "submit_selection",
+            "type": "button",
+            "action_ts": "1759773379.580727"
+        }
+    ]
+}

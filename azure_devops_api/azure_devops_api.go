@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1259,10 +1260,26 @@ func checkWorkerNamePartsMatch(Name *string, parts []string) (bool, error) {
 
 	return true, nil
 }
+func (azureDevopsAPI *AzureDevopsAPI) checkUserInputProvisionWobject(wobj *human_api_types.Wobject) error {
+	acailableTypes := []string{"Bug", "Task"}
+	if !slices.Contains(acailableTypes, wobj.Type) {
+		return fmt.Errorf("wobject Type is '%s' not one of '%v'", wobj.Type, acailableTypes)
+	}
+
+	acailableStatuses := []string{"New", "Active", "Blocked", "Closed"}
+	if !slices.Contains(acailableStatuses, wobj.Status) {
+		return fmt.Errorf("wobject Status is '%s' not one of '%v'", wobj.Status, acailableStatuses)
+	}
+	return nil
+}
 
 func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wobject) error {
 
-	azureDevopsAPI.WorkItemTrackingClient.Client.CreateWorkItem(nil, workitemtracking.CreateWorkItemArgs{})
+	err := azureDevopsAPI.checkUserInputProvisionWobject(wobj)
+	if err != nil {
+		return err
+	}
+	//azureDevopsAPI.WorkItemTrackingClient.Client.CreateWorkItem(nil, workitemtracking.CreateWorkItemArgs{})
 	requestDict, err := wobj.ConverttotMap()
 
 	if err != nil {
@@ -1325,8 +1342,9 @@ func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wob
 			return err
 		}
 		log.Printf("Created Wit: %d", *wit.Id)
-		
+
 		wobj.Id = strconv.Itoa(*wit.Id)
+		wobj.Link = fmt.Sprintf("https://%s.visualstudio.com/%s/_workitems/edit/%d", strings.ToLower(azureDevopsAPI.Configuration.OrganizationName), azureDevopsAPI.Configuration.OrganizationName, *wit.Id)
 
 		err = azureDevopsAPI.WorkItemTrackingClient.AddWitComment(*wit.Id, wobj.Description)
 		if err != nil {
@@ -1334,8 +1352,15 @@ func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wob
 		}
 	}
 
-	return azureDevopsAPI.UpdateWobject(wobj)
+	err = azureDevopsAPI.UpdateWobject(wobj)
+	if err != nil {
+		return err
+	}
 
+	if wobj.Link == "" {
+		return fmt.Errorf("wobject %s, '%s' Link was not set", wobj.Id, wobj.Title)
+	}
+	return nil
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobject) error {
@@ -1343,10 +1368,12 @@ func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobjec
 	if err != nil {
 		return err
 	}
+
 	wit, err := azureDevopsAPI.WorkItemTrackingClient.GetWit(&wobjID)
 	if err != nil {
 		return err
 	}
+	wobj.Link = fmt.Sprintf("https://%s.visualstudio.com/%s/_workitems/edit/%d", strings.ToLower(azureDevopsAPI.Configuration.OrganizationName), azureDevopsAPI.Configuration.OrganizationName, *wit.Id)
 
 	state, ok := (*wit.Fields)["System.State"].(string)
 	if !ok {
@@ -1358,7 +1385,9 @@ func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobjec
 	}
 
 	Document := []webapi.JsonPatchOperation{}
-
+	if len(keyValMap) == 0 {
+		return nil
+	}
 	for Path, Value := range keyValMap {
 		Document = append(Document, webapi.JsonPatchOperation{
 			Op:    &webapi.OperationValues.Replace,
@@ -1367,6 +1396,7 @@ func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobjec
 		})
 	}
 	_, err = azureDevopsAPI.WorkItemTrackingClient.UpdateWit(wit.Id, &Document)
+
 	return err
 
 }

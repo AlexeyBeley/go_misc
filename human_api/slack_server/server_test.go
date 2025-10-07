@@ -58,7 +58,7 @@ func NewDataCollector() *ResponseWriterDataCollector {
 }
 
 // curl -X POST -d "key1=value1&key2=value2" http://127.0.0.1:8080/ticket
-func TestHapiMain(t *testing.T) {
+func TestHapiMainWobjInit(t *testing.T) {
 	t.Run("Init test", func(t *testing.T) {
 		w := ResponseWriterMock{DataCollector: NewDataCollector()}
 
@@ -71,7 +71,7 @@ func TestHapiMain(t *testing.T) {
 			"team_domain":           "horeydomain",
 			"team_id":               "horeyteam",
 			"text":                  "wobj init",
-			"token":                 "SECRETTOKEN",
+			"token":                 "TESTTOKEN",
 			"trigger_id":            "12345678910.12345678910.12345678910HOREY",
 			"user_id":               "USERIDHOREY",
 			"user_name":             "horeyname.horeyfamily"}
@@ -85,7 +85,18 @@ func TestHapiMain(t *testing.T) {
 			URL:      &url.URL{Path: "bla.com"},
 			PostForm: request,
 			Header:   http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}}
-		slackServer := &SlackServer{}
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
+		slackServer.Configuration.VerificationToken = common_utils.StrPTR("TESTTOKEN")
+
 		slackServer.hapiMain(w, r)
 		SCExpected := http.StatusOK
 
@@ -95,12 +106,87 @@ func TestHapiMain(t *testing.T) {
 	})
 }
 
+func TestHapiMainMenu(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+		w := ResponseWriterMock{DataCollector: NewDataCollector()}
+
+		baseMap := map[string]string{"api_app_id": "APIAPPID012",
+			"channel_id":            "CHANID01234",
+			"channel_name":          "directmessage",
+			"command":               "/hapi",
+			"is_enterprise_install": "false",
+			"response_url":          "https://hooks.slack.com/commands/SOMETHINGONE/12345678910/SONETHINGTWO",
+			"team_domain":           "horeydomain",
+			"team_id":               "horeyteam",
+			"text":                  "",
+			"token":                 "TESTTOKEN",
+			"trigger_id":            "12345678910.12345678910.12345678910HOREY",
+			"user_id":               "USERIDHOREY",
+			"user_name":             "horeyname.horeyfamily"}
+
+		request := url.Values{}
+		for key, val := range baseMap {
+			request[key] = []string{val}
+		}
+
+		r := &http.Request{
+			URL:      &url.URL{Path: "bla.com"},
+			PostForm: request,
+			Header:   http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}}
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
+		slackServer.Configuration.VerificationToken = common_utils.StrPTR("TESTTOKEN")
+
+		slackServer.hapiMain(w, r)
+		SCExpected := http.StatusOK
+
+		if *w.DataCollector.StatusCode != SCExpected {
+			t.Fatalf("Status code expected %d, received %d with data: %v", SCExpected, *w.DataCollector.StatusCode, string(*w.DataCollector.Response))
+		}
+	})
+}
+
+func TestLoadGenericMenuCreateWobjectNew(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
+		slackServer.Configuration.VerificationToken = common_utils.StrPTR("TESTTOKEN")
+
+		fileName := "slack_wobj_create_new.json"
+		response, err := slackServer.LoadGenericMenu(fileName, &map[string]string{"STRING_REPLACEMENT_INITIAL_USER": "YourSlackUserID"})
+
+		if err != nil {
+			t.Fatalf("Recieved error: %V ", err)
+		}
+		if len(response.Blocks) == 0 {
+			t.Fatalf("Expected > 0 blocks in  %s", fileName)
+		}
+
+	})
+}
+
 func TestSendResponseUrlMessageRaw(t *testing.T) {
 	t.Run("Init test", func(t *testing.T) {
 
 		url := ""
 
-		response := map[string]any{"1": "2"}
+		response := slackBlockKitResponse{}
 		slackServer := &SlackServer{}
 		err := slackServer.sendResponseUrlMessage(url, response)
 		if err != nil {
@@ -110,7 +196,7 @@ func TestSendResponseUrlMessageRaw(t *testing.T) {
 	})
 }
 
-func TestHandleInteractivePayload(t *testing.T) {
+func TestHandleInteractivePayloadMain(t *testing.T) {
 	t.Run("Init test", func(t *testing.T) {
 
 		dir, err := os.Getwd()
@@ -121,7 +207,72 @@ func TestHandleInteractivePayload(t *testing.T) {
 		testPayloadFilePath := filepath.Join(dir, "payloads", "main_wobj.json")
 		paylod, err := os.ReadFile(testPayloadFilePath)
 
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
 		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+
+		//common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")) )
+		err = slackServer.handleInteractivePayload(string(paylod))
+
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+	})
+}
+
+func TestHandleInteractivePayloadWobjCreateSubmit(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		testPayloadFilePath := filepath.Join(dir, "payloads", "wobject_create_submit.json")
+		paylod, err := os.ReadFile(testPayloadFilePath)
+
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
+		slackServer.Configuration.VerificationToken = common_utils.StrPTR("TESTTOKEN")
+
+		//common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")) )
+		err = slackServer.handleInteractivePayload(string(paylod))
+
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+	})
+}
+
+func TestHandleInteractivePayloadWobjCreateSubmitnon_default(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		testPayloadFilePath := filepath.Join(dir, "payloads", "wobject_create_submit_non_default.json")
+		paylod, err := os.ReadFile(testPayloadFilePath)
+
+		if err != nil {
+			t.Fatalf("Failed with error: %v", err)
+		}
+
+		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
+		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
+		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
+		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
+		slackServer.Configuration.VerificationToken = common_utils.StrPTR("TESTTOKEN")
 
 		//common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api")) )
 		err = slackServer.handleInteractivePayload(string(paylod))
@@ -144,7 +295,11 @@ func TestSendResponseUrlMessageFromFile(t *testing.T) {
 		slackServer := SlackServerNew(config_pol.WithConfigurationFile(&GlobalSlackServerConfigurationFilePath))
 		slackServer.Configuration.MainDirPath = common_utils.StrPTR(filepath.Join(dir, "../../cmd/human_api"))
 		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
-		response, err := slackServer.LoadGenericMenu("slack_wobj_create_new.json")
+		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
+
+		fileName := "slack_wobj_create_new.json"
+		//fileName = "new_tmp.json"
+		response, err := slackServer.LoadGenericMenu(fileName, &map[string]string{"STRING_REPLACEMENT_INITIAL_USER": "YourSlackUserID"})
 		if err != nil {
 			t.Fatalf("Failed with error: %v", err)
 		}

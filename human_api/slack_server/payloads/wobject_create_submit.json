@@ -1,82 +1,47 @@
 {
     "type": "block_actions",
     "user": {
-        "id": "U020H57S406",
-        "username": "horey.horey",
-        "name": "horey.horey",
-        "team_id": "TESTTEAM"
+        "id": "TODODODOD",
+        "username": "alexey.horey",
+        "name": "alexey.horey",
+        "team_id": "TEAMTESTID"
     },
-    "api_app_id": "TESTAPIAPPID",
+    "api_app_id": "USERIDTEST",
     "token": "TESTTOKEN",
     "container": {
         "type": "message",
-        "message_ts": "1758483893.000600",
-        "channel_id": "TESTCHANNELID",
+        "message_ts": "1759579376.000200",
+        "channel_id": "TESTID",
         "is_ephemeral": true
     },
-    "trigger_id": "TEST.TRIGGER.ID",
+    "trigger_id": "TESTID.TESTID.TESTID",
     "team": {
-        "id": "TESTTEAMID",
-        "domain": "DOMAINHOREY"
+        "id": "TESTID",
+        "domain": "horeyDomain"
     },
     "enterprise": null,
     "is_enterprise_install": false,
     "channel": {
-        "id": "TESTCHANNELID",
+        "id": "TESTID",
         "name": "directmessage"
     },
     "state": {
         "values": {
-            "selects_actions_block": {
-                "select_type": {
-                    "type": "static_select",
-                    "selected_option": {
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Task",
-                            "emoji": true
-                        },
-                        "value": "task"
-                    }
-                },
-                "select_team": {
-                    "type": "static_select",
-                    "selected_option": {
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Dev",
-                            "emoji": true
-                        },
-                        "value": "dev"
-                    }
-                },
-                "select_status": {
-                    "type": "static_select",
-                    "selected_option": {
-                        "text": {
-                            "type": "plain_text",
-                            "text": "New",
-                            "emoji": true
-                        },
-                        "value": "new"
-                    }
+            "description_input_block": {
+                "input_plain_text_description": {
+                    "type": "plain_text_input",
+                    "value": "descrip"
                 }
             },
             "title_input_block": {
-                "title_input": {
+                "input_plain_text_title": {
                     "type": "plain_text_input",
-                    "value": "[Horey] title sample"
-                }
-            },
-            "description_input_block": {
-                "description_input": {
-                    "type": "plain_text_input",
-                    "value": "bug about bug title sample"
+                    "value": "title"
                 }
             }
         }
     },
-    "response_url": "https://hooks.slack.com/actions/TESTCODE1/TESTCODE2/TESTCODE3",
+    "response_url": "https://hooks.slack.com/actions/TESID/TESID/TESID",
     "actions": [
         {
             "action_id": "main->wobj->create->submit",
@@ -88,7 +53,7 @@
             },
             "value": "submit_selection",
             "type": "button",
-            "action_ts": "1758484779.115718"
+            "action_ts": "1759579395.152747"
         }
     ]
 }
