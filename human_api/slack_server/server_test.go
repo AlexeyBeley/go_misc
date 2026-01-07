@@ -297,7 +297,7 @@ func TestSendResponseUrlMessageFromFile(t *testing.T) {
 		*slackServer.Configuration.MainDirPath = filepath.Join(*slackServer.Configuration.MainDirPath, "slack_server_static_files")
 		*slackServer.Configuration.SlackBlockKitDirPath = *slackServer.Configuration.MainDirPath
 
-		fileName := "slack_wobj_create_new.json"
+		fileName := "help.json"
 		//fileName = "new_tmp.json"
 		response, err := slackServer.LoadGenericMenu(fileName, &map[string]string{"STRING_REPLACEMENT_INITIAL_USER": "YourSlackUserID"})
 		if err != nil {

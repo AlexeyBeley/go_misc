@@ -1,173 +1,82 @@
 {
-  "blocks": [
-    {
-      "type": "header",
-      "text": {
-        "type": "plain_text",
-        "text": "New WObject"
-      }
-    },
-    {
-      "type": "input",
-      "block_id": "title_input_block",
-      "element": {
-        "type": "plain_text_input",
-        "action_id": "title_input"
-      },
-      "label": {
-        "type": "plain_text",
-        "text": "Title"
-      }
-    },
-    {
-      "type": "input",
-      "block_id": "description_input_block",
-      "element": {
-        "type": "plain_text_input",
-        "action_id": "description_input",
-        "multiline": true
-      },
-      "label": {
-        "type": "plain_text",
-        "text": "Description"
-      }
-    },
-    {
-      "type": "input",
-      "block_id": "type_select_block",
-      "optional": true,
-      "label": {
-        "type": "plain_text",
-        "text": "Select type"
-      },
-      "element": {
-        "type": "static_select",
-        "action_id": "select_type",
-        "initial_option": {
-          "text": {
-            "type": "plain_text",
-            "text": "Bug"
-          },
-          "value": "bug"
-        },
-        "options": [
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Task"
-            },
-            "value": "task"
-          },
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Bug"
-            },
-            "value": "bug"
-          }
-        ]
-      }
-    },
-    {
-      "type": "input",
-      "block_id": "team_select_block",
-      "optional": true,
-      "label": {
-        "type": "plain_text",
-        "text": "Select team"
-      },
-      "element": {
-        "type": "static_select",
-        "action_id": "select_team",
-        "initial_option": {
-          "text": {
-            "type": "plain_text",
-            "text": "Infra"
-          },
-          "value": "infra"
-        },
-        "options": [
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Infra"
-            },
-            "value": "infra"
-          },
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Dev"
-            },
-            "value": "dev"
-          }
-        ]
-      }
-    },
-    {
-      "type": "input",
-      "block_id": "status_select_block",
-      "optional": true,
-      "label": {
-        "type": "plain_text",
-        "text": "Select status"
-      },
-      "element": {
-        "type": "static_select",
-        "action_id": "select_status",
-        "initial_option": {
-          "text": {
-            "type": "plain_text",
-            "text": "New"
-          },
-          "value": "new"
-        },
-        "options": [
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "New"
-            },
-            "value": "new"
-          },
-          {
-            "text": {
-              "type": "plain_text",
-              "text": "Active"
-            },
-            "value": "active"
-          }
-        ]
-      }
-    },
-    {
-      "type": "input",
-      "block_id": "assignee_select_block",
-      "optional": true,
-      "label": {
-        "type": "plain_text",
-        "text": "Select assignee"
-      },
-      "element": {
-        "type": "users_select",
-        "action_id": "select_assignee",
-        "initial_user": "STRING_REPLACEMENT_INITIAL_USER"
-      }
-    },
-    {
-      "type": "actions",
-      "block_id": "submit_actions_block",
-      "elements": [
-        {
-          "type": "button",
-          "text": {
-            "type": "plain_text",
-            "text": "Submit Selection"
-          },
-          "value": "submit_selection",
-          "action_id": "main->wobj->create->submit"
-        }
-      ]
-    }
-  ]
+	"blocks": [
+		{
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": "Daily"
+			}
+		},
+		{
+			"type": "table",
+			"rows": [
+				[
+					{
+						"type": "rich_text",
+						"elements": [
+							{
+								"type": "rich_text_section",
+								"elements": [
+									{
+										"type": "text",
+										"text": "Header 1",
+										"style": {
+											"bold": true
+										}
+									}
+								]
+							}
+						]
+					},
+					{
+						"type": "rich_text",
+						"elements": [
+							{
+								"type": "rich_text_section",
+								"elements": [
+									{
+										"type": "text",
+										"text": "Header 2",
+										"style": {
+											"bold": true
+										}
+									}
+								]
+							}
+						]
+					}
+				],
+				[
+					{
+						"type": "rich_text",
+						"elements": [
+							{
+								"type": "rich_text_section",
+								"elements": [
+									{
+										"type": "text",
+										"text": "Datum 1"
+									}
+								]
+							}
+						]
+					},
+					{
+						"type": "rich_text",
+						"elements": [
+							{
+								"type": "rich_text_section",
+								"elements": [
+									{
+										"type": "text",
+										"text": "Datum 2"
+									}
+								]
+							}
+						]
+					}
+				]
+			]
+		}
+	]
 }
