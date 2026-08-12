@@ -57,6 +57,27 @@ type WorkItem struct {
 	}
 }
 
+func (wit *WorkItem) GetWobjectType() (string, error) {
+	prefixError := "[azure_devops_api:GetWobjectType]"
+	originalType := strings.ReplaceAll(wit.Fields["System.WorkItemType"].(string), " ", "")
+	conversionsMap := map[string]string{
+		"Task":            "Task",
+		"Bug":             "Bug",
+		"UserStory":       "UserStory",
+		"Feature":         "Feature",
+		"CustomerSupport": "Task"}
+
+	newType, ok := conversionsMap[originalType]
+	if !ok {
+		possibleTypes := []string{}
+		for key := range conversionsMap {
+			possibleTypes = append(possibleTypes, key)
+		}
+		return "", fmt.Errorf("%s Wit type '%s' is not one of ['%s']", prefixError, originalType, strings.Join(possibleTypes, "', '"))
+	}
+	return newType, nil
+}
+
 type witWorkItemRelation struct {
 	Rel        *string                `json:"rel"`
 	Url        *string                `json:"url"`
@@ -1175,19 +1196,22 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorkClientAndCtx() (work.Client, contex
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.Worker, error) {
+	errorPrefix := "[azure_devops_api:GetWorker]"
+
 	NameParts, err := splitWorkerNameToParts(Name, []string{" ", ".", "-", "_", ","})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s Splitting worker to parts\n%v", errorPrefix, err)
 	}
 
 	users, err := azureDevopsAPI.GraphClient.ListUsers()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s Fetching graph users\n%v", errorPrefix, err)
 	}
 	for _, user := range users {
-		match, err := checkWorkerNamePartsMatch(user.DisplayName, NameParts)
+		lowerDisplayName := strings.ToLower(*user.DisplayName)
+		match, err := checkWorkerNamePartsMatch(&lowerDisplayName, NameParts)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s Checking name parts match\n%v", errorPrefix, err)
 		}
 		if match {
 			lg.InfoF("test: %v", user)
@@ -1196,34 +1220,40 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorker(Name *string) (*human_api_types.
 		}
 	}
 
-	return nil, nil
-
+	return nil, fmt.Errorf("%s Finding user by name '%s'\n%v", errorPrefix, *Name, err)
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GetWorkerSprint(worker *human_api_types.Worker) (*human_api_types.Sprint, error) {
+	errorBase := "[azure_devops_api->GetWorkerSprint]"
+	if worker.Id == "" {
+		azureWorker, err := azureDevopsAPI.GetWorkerByName(worker.Name)
+		if err != nil {
+			return nil, fmt.Errorf("%s Error getting worker by name '%s'\n%v", errorBase, worker.Name, err)
+		}
+		worker.Id = azureWorker.Id
+	}
 	teamID, err := azureDevopsAPI.GetWorkerTeamId(worker.Id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s Error getting worker team\n%v", errorBase, err)
 	}
 
-	allSprints, err := azureDevopsAPI.WorkItemTrackingClient.GetSprints(&teamID)
-
-	//itersold, err := azureDevopsAPI.WorkClient.GetIterations(&teamID)
+	allSprints, err := azureDevopsAPI.WorkItemTrackingClient.GetTeamSprints(&teamID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s Error getting all sprints\n%v", errorBase, err)
 	}
 
 	//now := time.Now()
 	currentSprints := []human_api_types.Sprint{}
 	nowTime := time.Now()
-	for _, sprint := range allSprints {
+	for i, sprint := range allSprints {
+		log.Printf("sprint: %d", i)
 		if nowTime.Before(sprint.DateEnd) && nowTime.After(sprint.DateStart) {
 			currentSprints = append(currentSprints, sprint)
 		}
 	}
 
-	if len(currentSprints) > 1 || len(currentSprints) == 0 {
-		return nil, fmt.Errorf("expected to find single sprint, found: %d", len(currentSprints))
+	if len(currentSprints) != 1 {
+		return nil, fmt.Errorf("%s Expected to find single sprint, found: %d", errorBase, len(currentSprints))
 	}
 
 	return &currentSprints[0], nil
@@ -1364,24 +1394,26 @@ func (azureDevopsAPI *AzureDevopsAPI) ProvisionWobject(wobj *human_api_types.Wob
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobject) error {
+	errorPrefix := "[azure_devops_api:UpdateWobject]"
 	wobjID, err := strconv.Atoi(wobj.Id)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s Converting string id to int \n%v", errorPrefix, err)
 	}
 
-	wit, err := azureDevopsAPI.WorkItemTrackingClient.GetWit(&wobjID)
+	currentWobject, err := azureDevopsAPI.GetWobject(wobj.Id)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s Converting getting current wobject\n%v", errorPrefix, err)
 	}
-	wobj.Link = fmt.Sprintf("https://%s.visualstudio.com/%s/_workitems/edit/%d", strings.ToLower(azureDevopsAPI.Configuration.OrganizationName), azureDevopsAPI.Configuration.OrganizationName, *wit.Id)
 
-	state, ok := (*wit.Fields)["System.State"].(string)
-	if !ok {
-		log.Fatalf("Could not find or assert System.State to a string for work item #%d.", *wit.Id)
-	}
 	keyValMap := map[string]string{}
-	if wobj.Status != state {
+	if wobj.Status != currentWobject.Status {
 		keyValMap["/fields/System.State"] = wobj.Status
+	}
+	if wobj.InvestedTime != currentWobject.InvestedTime {
+		keyValMap["/fields/Microsoft.VSTS.Scheduling.CompletedWork"] = strconv.Itoa(wobj.InvestedTime)
+	}
+	if wobj.LeftTime != currentWobject.LeftTime {
+		keyValMap["/fields/Microsoft.VSTS.Scheduling.RemainingWork"] = strconv.Itoa(wobj.LeftTime)
 	}
 
 	Document := []webapi.JsonPatchOperation{}
@@ -1395,9 +1427,17 @@ func (azureDevopsAPI *AzureDevopsAPI) UpdateWobject(wobj *human_api_types.Wobjec
 			Value: Value,
 		})
 	}
-	_, err = azureDevopsAPI.WorkItemTrackingClient.UpdateWit(wit.Id, &Document)
+	_, err = azureDevopsAPI.WorkItemTrackingClient.UpdateWit(&wobjID, &Document)
+	if err != nil {
+		return fmt.Errorf("%s Updating wit\n%v", errorPrefix, err)
+	}
 
-	return err
+	err = azureDevopsAPI.WorkItemTrackingClient.AddWitComment(wobjID, wobj.Description)
+	if err != nil {
+		return fmt.Errorf("%s Adding WIT comment\n%v", errorPrefix, err)
+	}
+
+	return nil
 
 }
 
@@ -1425,6 +1465,7 @@ func (azureDevopsAPI *AzureDevopsAPI) GetAreaPath(Worker *human_api_types.Worker
 }
 
 func (azureDevopsAPI *AzureDevopsAPI) GetWorkerByName(workerName string) (*human_api_types.Worker, error) {
+
 	workerNameSpaceParts := strings.Split(workerName, " ")
 	workerNameParts := []string{}
 	for _, workerNameSpacePart := range workerNameSpaceParts {
@@ -1436,7 +1477,7 @@ func (azureDevopsAPI *AzureDevopsAPI) GetWorkerByName(workerName string) (*human
 
 	workers, err := azureDevopsAPI.GraphClient.ListUsers()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("faile to get worker by name: %s: %w", workerName, err)
 	}
 
 	returnGraphUsers := []*graph.GraphUser{}
@@ -1569,4 +1610,230 @@ func (azureDevopsAPI *AzureDevopsAPI) GenerateUpdateWitRequest(requestDict map[s
 	req, err := azureDevopsAPI.CreateRequest(ctx, fmt.Sprintf("wit/workitems/%s?api-version=7.0", requestDict["Id"]), http.MethodPatch, bytes.NewBuffer(postData), "application/json-patch+json")
 
 	return req, err
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetWorkerSprintWobjects(sprint *human_api_types.Sprint, worker *human_api_types.Worker) ([]*human_api_types.Wobject, error) {
+	errorPrefix := "[azure_devops_api:GetWorkerSprintWobjects]"
+	iteration, err := azureDevopsAPI.WorkItemTrackingClient.GetIterationBySrpint(sprint)
+	if err != nil {
+		return nil, fmt.Errorf("%s getting iteration from sprint\n%v", errorPrefix, err)
+	}
+
+	adoWorker, err := azureDevopsAPI.GetWorker(&worker.Name)
+	if err != nil {
+		return nil, fmt.Errorf("%s getting Azure devops worker\n%v", errorPrefix, err)
+	}
+
+	//iterationWorkItems, err := azureDevopsAPI.WorkClient.GetIterationWorkItems(&teamId, iteration.Identifier)
+	if iteration.Path == nil {
+		return nil, fmt.Errorf("%s Iteration path is nil\n%v", errorPrefix, err)
+	}
+	wits, err := azureDevopsAPI.WorkItemTrackingClient.GetWorkerIterationWorkItems(adoWorker.Name, *iteration.Path)
+	if err != nil {
+		return nil, fmt.Errorf("%s Getting worker iteration work items\n%v", errorPrefix, err)
+	}
+
+	wobjects, err := ConvertWitsToWobjects(wits)
+	if err != nil {
+		return nil, fmt.Errorf("%s Converting wits to wobjects\n%v", errorPrefix, err)
+	}
+
+	parentIds := []string{}
+	allIds := []string{}
+	for _, wobject := range wobjects {
+		allIds = append(allIds, wobject.Id)
+		if wobject.ParentID != "" {
+			parentIds = append(parentIds, wobject.ParentID)
+		}
+	}
+	for _, parentId := range parentIds {
+		if !slices.Contains(allIds, parentId) {
+			parentWobject, err := azureDevopsAPI.GetWobject(parentId)
+			if err != nil {
+				return nil, fmt.Errorf("%s getting wobject's parent\n%v", errorPrefix, err)
+			}
+			wobjects = append(wobjects, parentWobject)
+		}
+	}
+
+	for _, wobject := range wobjects {
+		if wobject.Id == "" {
+			return nil, fmt.Errorf("%s Checking wobject ID\n", errorPrefix)
+		}
+		if wobject.Title == "" {
+			return nil, fmt.Errorf("%s Checking wobject Title\n", errorPrefix)
+		}
+		if wobject.Type == "" {
+			return nil, fmt.Errorf("%s Checking wobject Type\n", errorPrefix)
+		}
+	}
+
+	return wobjects, nil
+}
+func (azureDevopsAPI *AzureDevopsAPI) GetWobject(wobjID string) (*human_api_types.Wobject, error) {
+	errorPrefix := "[azure_devops_api:GetWobject]"
+
+	intID, err := strconv.Atoi(wobjID)
+	if err != nil {
+		return nil, fmt.Errorf("%s converting wobjectId to int\n%v", errorPrefix, err)
+	}
+
+	wit := &WorkItem{ID: intID}
+	success, err := azureDevopsAPI.WorkItemTrackingClient.UpdateWitInformation(wit)
+	if err != nil {
+		return nil, fmt.Errorf("%s error getting wit\n%v", errorPrefix, err)
+	}
+	if !success {
+		return nil, fmt.Errorf("%s failed getting wit \n", errorPrefix)
+	}
+
+	wobject, err := ConvertWitToWobject(wit)
+	if err != nil {
+		return nil, fmt.Errorf("%s converting wit to wobject\n%v", errorPrefix, err)
+	}
+	return wobject, nil
+}
+
+func (azureDevopsAPI *AzureDevopsAPI) GetTeamSprints(teamId *string) ([]human_api_types.Sprint, error) {
+	errorPrefix := "[azure_devops_api:GetTeamSprints]"
+	if teamId != nil {
+		return nil, fmt.Errorf("%s Not implemented", errorPrefix)
+	}
+
+	TeamSettingsIterations, err := azureDevopsAPI.WorkClient.GetTeamIterations(teamId)
+
+	if TeamSettingsIterations == nil {
+		return nil, err
+	}
+	for _, TeamSettingsIteration := range TeamSettingsIterations {
+		if *TeamSettingsIteration.Name == azureDevopsAPI.Configuration.SprintName {
+			return nil, nil
+		}
+	}
+	return nil, fmt.Errorf("was not able to find Iteration by name: %s", azureDevopsAPI.Configuration.SprintName)
+}
+
+func extractFloat64String(workItem WorkItem, FieldKey string) string {
+	var retVal string
+	if workItem.Fields[FieldKey] == nil {
+		return retVal
+	}
+
+	value, ok := workItem.Fields[FieldKey]
+	if !ok {
+		check(fmt.Errorf("extractFloat64String: Was not able to Extract %v, %v, %v", FieldKey, value, workItem))
+	}
+	retValtmp, err := strconv.Atoi(strconv.FormatFloat(value.(float64), 'f', 0, 64))
+	check(err)
+	retVal = strconv.Itoa(retValtmp)
+	return retVal
+}
+
+func check(e error) {
+	if e != nil {
+		strErr := fmt.Sprintf("%v", e)
+		data := []byte(strErr)
+		err := os.WriteFile("/tmp/hapi.log", data, 0644) // 0644 are file permissions
+		if err != nil {
+			fmt.Println("Error writing to file:", err)
+			return
+		}
+		panic(e)
+	}
+}
+func extractFloat64Int(workItem WorkItem, FieldKey string) int {
+	var retVal int
+	if workItem.Fields[FieldKey] == nil {
+		return retVal
+	}
+
+	value, ok := workItem.Fields[FieldKey]
+	if !ok {
+		check(fmt.Errorf("extractFloat64Int: Was not able to Extract %v, %v, %v", FieldKey, value, workItem))
+	}
+	retVal, err := strconv.Atoi(strconv.FormatFloat(value.(float64), 'f', 0, 64))
+	check(err)
+	return retVal
+}
+
+func extractWorkerID(workItem WorkItem) string {
+	var data string
+	if workItem.Fields["System.AssignedTo"] != nil {
+		data = workItem.Fields["System.AssignedTo"].(map[string]interface{})["uniqueName"].(string)
+	} else {
+		data = workItem.Fields["System.CreatedBy"].(map[string]interface{})["uniqueName"].(string)
+	}
+
+	return strings.Split(data, "@")[0]
+}
+func extractStatus(workItem WorkItem) string {
+	SystemState := workItem.Fields["System.State"].(string)
+	switch SystemState {
+	case "New":
+		return "New"
+	case "Closed":
+		return "Closed"
+	case "Resolved":
+		return "Closed"
+	case "Removed":
+		return "Closed"
+	case "Active":
+		return "Active"
+	case "Blocked":
+		return "Blocked"
+	default:
+		log.Printf("invalid State: %v, using default\n", SystemState)
+		return "Blocked"
+	}
+}
+
+func ConvertWitsToWobjects(wits []*WorkItem) ([]*human_api_types.Wobject, error) {
+	wobjects := []*human_api_types.Wobject{}
+
+	for _, wit := range wits {
+		wobj, err := ConvertWitToWobject(wit)
+		if err != nil {
+			return nil, err
+		}
+		wobjects = append(wobjects, wobj)
+	}
+	return wobjects, nil
+}
+
+func ConvertWitToWobject(wit *WorkItem) (wobject *human_api_types.Wobject, err error) {
+	errorPrefix := "[azure_devops_api:ConvertWitToWobject]"
+	errr := common_utils.ErrorCreator("[azure_devops_api:ConvertWitToWobject]")
+
+	wobject = &human_api_types.Wobject{}
+	wobject.ParentID = extractFloat64String(*wit, "System.Parent")
+	wobject.Id = strconv.Itoa(wit.ID)
+	wobject.Title = wit.Fields["System.Title"].(string)
+	wobject.Priority = extractFloat64Int(*wit, "Microsoft.VSTS.Common.Priority")
+
+	wobject.WorkerID = extractWorkerID(*wit)
+	wobject.ChildrenIDs = &[]string{}
+
+	wobject.Status = extractStatus(*wit)
+	SprintParts := strings.Split(wit.Fields["System.IterationPath"].(string), "\\")
+	wobject.Sprint = SprintParts[len(SprintParts)-1]
+
+	wobjType, err := wit.GetWobjectType()
+	if err != nil {
+		return nil, errr("Generating Wobject type from Wit", err)
+	}
+	err = wobject.SetType(strings.Replace(wobjType, " ", "", -1))
+	if err != nil {
+		return nil, fmt.Errorf("%s Setting Wobject type\n%v", errorPrefix, err)
+	}
+
+	inter, ok := wit.Fields["Microsoft.VSTS.Scheduling.CompletedWork"]
+	if ok {
+		wobject.InvestedTime = int(inter.(float64))
+	}
+
+	inter, ok = wit.Fields["Microsoft.VSTS.Scheduling.RemainingWork"]
+	if ok {
+		wobject.LeftTime = int(inter.(float64))
+	}
+	return wobject, nil
 }

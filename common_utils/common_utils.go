@@ -1,6 +1,9 @@
 package common_utils
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 const string_replacement_prefix = "STRING_REPLACEMENT"
 
@@ -19,4 +22,10 @@ func StringToDate(dateString string) (*time.Time, error) {
 	}
 
 	return &parsedTime, nil
+}
+
+func ErrorCreator(errorPrefix string) func(string, error) error {
+	return func(line string, err error) error {
+		return fmt.Errorf("%s %s\n%v", errorPrefix, line, err)
+	}
 }

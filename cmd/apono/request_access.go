@@ -44,7 +44,8 @@ func main() {
 
 	url := config.AwsAccountURL
 	lg.InfoF("GOTO: %s", url)
-	cmd := exec.Command("open", "-a", "Google Chrome", url)
+	//cmd := exec.Command("open", "-a", "Google Chrome", url)
+	cmd := exec.Command("open", "-a", "DuckDuckGo", url)
 	err = cmd.Start()
 	if err != nil {
 		panic(fmt.Errorf("failed to open URL in Chrome (%s): %w", runtime.GOOS, err))

@@ -1,7 +1,7 @@
 package human_api
 
 import (
-	"fmt"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -45,17 +45,19 @@ func GetConfigFilePath(basename string) (string, error) {
 	if basename == "" {
 		basename = "config.json"
 	}
-	dst_file_path := filepath.Join(abs_path, basename)
-	fmt.Printf("Ignoring path: %v", dst_file_path)
-	dst_file_path = "/tmp/human_api_config.json"
-	log.Printf("Generated test destination HAPI file path: %s", dst_file_path)
-	return dst_file_path, nil
+	_ = abs_path
+	//dst_file_path := filepath.Join(abs_path, basename)
+	//fmt.Printf("Ignoring path: %v", dst_file_path)
+	//dst_file_path = "/tmp/human_api_config.json"
+	//log.Printf("Generated test destination HAPI file path: %s", dst_file_path)
+	// todo: remove above dst_file_path
+	return GlobalHumanAPIConfigurationFilePath, nil
 
 }
 
 func test_check(t *testing.T, err error) {
 	if err != nil {
-		t.Errorf("%v", err)
+		t.Errorf("\n%v", err)
 	}
 }
 
@@ -145,6 +147,63 @@ func TestCreateTicket(t *testing.T) {
 		}
 
 		err = api.CreateTicket("DevopsTicket", "Test", "Test description", api.Configuration.WorkerName, 1)
+		test_check(t, err)
+	})
+}
+
+func TestDailyConfigNew(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+		ProjectManagerAPI, err := azure_devops_api.AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
+		if err != nil {
+			panic(err)
+		}
+
+		api, err := HumanAPINew(config_pol.WithConfigurationFile(&GlobalHumanAPIConfigurationFilePath), WithProjectManagerAPI(ProjectManagerAPI))
+		if err != nil {
+			panic(err)
+		}
+		worker := human_api_types.Worker{Name: api.Configuration.WorkerName}
+		config, err := api.DailyConfigNew(&worker)
+
+		test_check(t, err)
+		if _, err := os.Stat(config.DailyDirectory); errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+func TestFetchDaily(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+		ProjectManagerAPI, err := azure_devops_api.AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
+		if err != nil {
+			panic(err)
+		}
+
+		api, err := HumanAPINew(config_pol.WithConfigurationFile(&GlobalHumanAPIConfigurationFilePath), WithProjectManagerAPI(ProjectManagerAPI))
+		if err != nil {
+			panic(err)
+		}
+		worker := human_api_types.Worker{}
+		worker.Name = "el.al.y.be"
+		err = api.FetchDaily(&worker)
+		test_check(t, err)
+	})
+}
+
+func TestPushDaily(t *testing.T) {
+	t.Run("Init test", func(t *testing.T) {
+		ProjectManagerAPI, err := azure_devops_api.AzureDevopsAPINew(config_pol.WithConfigurationFile(&GlobalAzureDevopsAPIConfigurationFilePath))
+		if err != nil {
+			panic(err)
+		}
+
+		api, err := HumanAPINew(config_pol.WithConfigurationFile(&GlobalHumanAPIConfigurationFilePath), WithProjectManagerAPI(ProjectManagerAPI))
+		if err != nil {
+			panic(err)
+		}
+		worker := human_api_types.Worker{}
+		worker.Name = "el.al.y.be"
+		err = api.PushDaily(&worker)
 		test_check(t, err)
 	})
 }

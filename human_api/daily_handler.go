@@ -424,7 +424,7 @@ func SplitReportWobjectSubLineToTokens(line string) ([3]string, error) {
 		return [3]string{"-1", "-1", "-1"}, nil
 	}
 
-	if wobj_type != "UserStory" && wobj_type != "Task" && wobj_type != "Feature" && wobj_type != "DevOpsSupport" && wobj_type != "EscapedBug" {
+	if wobj_type != "UserStory" && wobj_type != "Task" && wobj_type != "Feature" && wobj_type != "DevOpsSupport" && wobj_type != "Bug" {
 		return [3]string{"", "", ""}, fmt.Errorf("generateWobjectFromHapiSubLine unsupported Wobject type: '%s' in line '%s'", wobj_type, line)
 	}
 
@@ -448,7 +448,7 @@ func SplitReportWobjectSubLineToTokens(line string) ([3]string, error) {
 		title += " " + strings.Join(title_left, " ")
 	}
 	//todo:
-	if wobj_type != "UserStory" && wobj_type != "Task" && wobj_type != "Feature" && wobj_type != "DevOpsSupport" && wobj_type != "EscapedBug" {
+	if wobj_type != "UserStory" && wobj_type != "Task" && wobj_type != "Feature" && wobj_type != "DevOpsSupport" && wobj_type != "Bug" {
 		return [3]string{"", "", ""}, fmt.Errorf("SplitReportWobjectSubLineToTokens unsupported Wobject type: '%s'", wobj_type)
 	}
 

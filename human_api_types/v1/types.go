@@ -1,6 +1,8 @@
 package human_api_types
 
 import (
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +22,16 @@ type Wobject struct {
 	Sprint       string    `json:"Sprint"`
 	Type         string    `json:"Type"`
 	Link         string    `json:"Link"`
+}
+
+func (wobject *Wobject) SetType(wobjectType string) error {
+	errorPrefix := "[human_api_types:SetType]"
+	possibleValues := []string{"Bug", "Task", "UserStory", "Feature"}
+	if !slices.Contains(possibleValues, wobjectType) {
+		return fmt.Errorf("%s Wobject type '%s' is not one of ['%s']", errorPrefix, wobjectType, strings.Join(possibleValues, "', '"))
+	}
+	wobject.Type = wobjectType
+	return nil
 }
 
 func (wobject *Wobject) GuessPriorityForRequestDict() string {
